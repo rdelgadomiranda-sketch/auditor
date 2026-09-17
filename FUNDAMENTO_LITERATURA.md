@@ -216,7 +216,7 @@ Todas citan Florida Medicaid, texto verificado.
 
 **R8 — Elementos administrativos faltantes.** Firmas (Lead Analyst **y** tutor), nombres de supervisores, care coordination, historia médica con medicamentos, file review, número de unidades por código con su necesidad médica, IEP/504 en servicios escolares. Un bloque de completitud, severidad `warning`, agregado. *§6.2.2, §7.2.*
 
-**R9 — Techos duros.** >40 h/sem, grupo >6, protocol modification atribuido a RBT. `blocker`. *§4.2.2.*
+**R9 — Techos duros. ✅ IMPLEMENTADO** como `scanFloridaServiceLimits`. >40 h/sem, grupo >6, protocol modification atribuido a RBT. `blocker`. *§4.2.2.*
 
 ### Bloque B — calidad clínica, con cita verificable
 

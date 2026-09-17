@@ -1808,6 +1808,10 @@ async function runAudit(){
         console.warn('Progress-data-per-behavior check failed:',err);
       }
 
+      // FL Medicaid 4.2.2: techos de cobertura. La suma de horas usa el
+      // canonico, por eso corre aqui y no con las demas reglas deterministas.
+      findings=findings.concat(scanFloridaServiceLimits(text,state.currentDoc.canonical));
+
       const docSizeKB=Math.round(state.currentDoc.text.length/1024);
       setProg(82,`Running deep clinical & regulatory audit on full document (${docSizeKB} KB)... this can take 20-60 seconds`);
       try{
@@ -2481,6 +2485,132 @@ function scanCoreInstruments(text,docType,client){
     add('FL_CORE_SCORING_REPORT','warning',
       'Se nombran instrumentos estandarizados pero no se detectan puntuaciones reportadas. La secci\u00f3n 4.2.1 exige que el reporte completo de puntuaci\u00f3n, incluidas las outcome measure scores, se presente con la solicitud de autorizaci\u00f3n.',
       'Include the complete scoring report with outcome measure scores (standard scores, percentiles, composites) for each core instrument, as required by Florida Medicaid Coverage Policy Section 4.2.1 for prior authorization requests.');
+  }
+  return findings;
+}
+
+// FL Medicaid 4.2.2: limites duros de cobertura.
+//   - "Florida Medicaid covers up to 40 hours per week of BA intervention
+//     services as indicated in the recipient's prior-authorized behavior plan."
+//   - Servicios grupales: "Maximum group size is six participants."
+//   - "Adaptive behavior treatment WITH PROTOCOL MODIFICATION - Services may be
+//     provided by Lead Analyst or BCaBA" (no RBT). Igual para la modalidad
+//     grupal con modificacion y para family adaptive behavior treatment
+//     guidance.
+// Superarlos no es una observacion de estilo: el servicio queda fuera de
+// cobertura y la reclamacion se deniega.
+//
+// La policy no enumera codigos CPT (los delega al fee schedule, Regla
+// 59G-4.002), pero este proyecto ya equipara 97155 = protocol modification y
+// 97156 = family/caregiver guidance, asi que las reglas aceptan el nombre del
+// servicio O su codigo.
+const FL_HOURS_PER_WEEK_RE=/(\d{1,3}(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:per\s*week|\/\s*week|a\s+week|weekly)/ig;
+const FL_GROUP_SIZE_RES=[
+  /group\s+size\s*(?:is|of|:)?\s*(?:a\s+)?(?:maximum\s+of\s+)?(\d{1,2})\b/ig,
+  /\bgroups?\s+of\s+(?:up\s+to\s+)?(\d{1,2})\s*(?:participants|clients|children|students|recipients|peers)?\b/ig,
+  /\b(\d{1,2})\s*(?:participants|clients|children|students|recipients)\s+(?:per|in|within)\s+(?:each\s+|the\s+|a\s+)?group\b/ig
+];
+// Atribucion DIRECCIONAL, no mera coincidencia: en una sesion de 97155 el RBT
+// suele estar presente siendo supervisado, y eso es legitimo. Solo se marca
+// cuando el documento dice que el RBT PRESTA el servicio.
+const FL_RBT_PROTOCOL_MOD_RES=[
+  /(?:97155|97158|protocol\s+modification)[^.;]{0,90}?(?:provided|delivered|rendered|performed|implemented|conducted|billed)\s+by\s+(?:the\s+|an?\s+)?RBT\b/i,
+  /\bRBT\s+(?:will\s+|shall\s+|is\s+to\s+)?(?:provide|deliver|render|perform|conduct|implement|bill)s?[^.;]{0,70}?(?:97155|97158|protocol\s+modification)/i,
+  /(?:97155|97158|protocol\s+modification)\s*[:\u2013\u2014-]\s*(?:the\s+)?RBT\b/i
+];
+const FL_RBT_FAMILY_GUIDANCE_RES=[
+  /(?:97156|family\s+adaptive\s+behavior\s+treatment\s+guidance|(?:parent|caregiver|family)\s+training)[^.;]{0,90}?(?:provided|delivered|rendered|performed|conducted|billed)\s+by\s+(?:the\s+|an?\s+)?RBT\b/i,
+  /\bRBT\s+(?:will\s+|shall\s+|is\s+to\s+)?(?:provide|deliver|render|perform|conduct|bill)s?[^.;]{0,70}?(?:97156|family\s+adaptive\s+behavior\s+treatment\s+guidance|(?:parent|caregiver|family)\s+training)/i,
+  /(?:97156|family\s+adaptive\s+behavior\s+treatment\s+guidance)\s*[:\u2013\u2014-]\s*(?:the\s+)?RBT\b/i
+];
+// Codigos de evaluacion: no cuentan contra el techo de intervencion.
+const FL_ASSESSMENT_CODES=/^(?:97151|97152)/;
+
+function scanFloridaServiceLimits(text,canonical){
+  const findings=[];
+  if(!text)return findings;
+  const add=(ruleId,severity,description,suggestedAction,matched,pos)=>{
+    const f={id:uid(),ruleId,severity,category:'florida_medicaid',description,suggestedAction,
+      status:'open',createdAt:Date.now()};
+    if(matched){f.matchedText=matched;f.position=pos;f.context=extractContext(text,pos,matched.length);}
+    findings.push(f);
+  };
+
+  // 1a. Una sola cifra declarada por encima del techo semanal.
+  let worst=null;
+  FL_HOURS_PER_WEEK_RE.lastIndex=0;
+  let m;
+  while((m=FL_HOURS_PER_WEEK_RE.exec(text))!==null){
+    const h=parseFloat(m[1]);
+    if(h>40&&h<=168&&(!worst||h>worst.h))worst={h,match:m[0],index:m.index};
+  }
+  if(worst){
+    add('FL_LIMIT_WEEKLY_HOURS','blocker',
+      `El documento declara ${worst.h} horas semanales ("${worst.match}"), por encima del techo de cobertura. La Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024, seccion 4.2.2) cubre hasta 40 horas por semana de servicios de intervencion BA.`,
+      'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 4.2.2, Florida Medicaid covers up to 40 hours per week of BA intervention services. Reduce the requested weekly hours to 40 or fewer, or document the medical necessity justification for an EPSDT exception for recipients under 21.',
+      worst.match,worst.index);
+  }
+
+  // 1b. Suma de horas de intervencion. Solo con el canonico: sumar cifras
+  // sueltas del texto contaria dos veces la misma linea (tabla y narrativa).
+  const cpt=(canonical&&Array.isArray(canonical.cpt))?canonical.cpt:null;
+  if(cpt){
+    let total=0;const lines=[];
+    for(const line of cpt){
+      if(!line||!line.code)continue;
+      const code=String(line.code).trim();
+      if(FL_ASSESSMENT_CODES.test(code))continue;
+      const h=parseFloat(line.hoursPerWeek);
+      if(!isFinite(h)||h<=0)continue;
+      total+=h;
+      lines.push(`${code}${line.modifier?' '+line.modifier:''}: ${h} h/sem`);
+    }
+    if(total>40&&!worst){
+      add('FL_LIMIT_WEEKLY_HOURS_TOTAL','blocker',
+        `Las horas semanales de intervencion suman ${Math.round(total*100)/100}, por encima del techo de cobertura de 40 h/semana que fija la seccion 4.2.2 de la Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024). Lineas contabilizadas: ${lines.join('; ')}. Los codigos de evaluacion (97151, 97152) no se incluyen.`,
+        'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 4.2.2, total BA intervention services are covered up to 40 hours per week. Reduce the combined weekly hours across intervention codes to 40 or fewer, or document the medical necessity justification for an EPSDT exception for recipients under 21.');
+    }
+  }
+
+  // 2. Tamano maximo de grupo.
+  let group=null;
+  for(const re of FL_GROUP_SIZE_RES){
+    re.lastIndex=0;
+    let g;
+    while((g=re.exec(text))!==null){
+      const n=parseInt(g[1],10);
+      if(n>6&&n<=60&&(!group||n>group.n))group={n,match:g[0],index:g.index};
+    }
+  }
+  if(group){
+    add('FL_LIMIT_GROUP_SIZE','blocker',
+      `El documento describe un grupo de ${group.n} participantes ("${group.match}"). La seccion 4.2.2 de la Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024) fija el tamano maximo de grupo en seis participantes para los servicios grupales de analisis de conducta.`,
+      'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 4.2.2, the maximum group size for group adaptive behavior treatment is six participants. Reduce the group size or split the group.',
+      group.match,group.index);
+  }
+
+  // 3. Modificacion de protocolo atribuida al RBT.
+  for(const re of FL_RBT_PROTOCOL_MOD_RES){
+    const hit=text.match(re);
+    if(hit){
+      add('FL_LIMIT_PROTOCOL_MOD_PROVIDER','blocker',
+        `El documento atribuye al RBT la prestacion de servicios con modificacion de protocolo ("${hit[0].trim()}"). La seccion 4.2.2 de la Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024) restringe el adaptive behavior treatment with protocol modification al Lead Analyst o al BCaBA. Que el RBT este presente durante la sesion siendo supervisado es correcto; prestar o facturar el servicio, no.`,
+        'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 4.2.2, adaptive behavior treatment with protocol modification may be provided only by the Lead Analyst or a BCaBA. Reassign the service to the Lead Analyst or BCaBA, and describe the RBT\u2019s role as receiving supervision rather than rendering the service.',
+        hit[0].trim(),hit.index);
+      break;
+    }
+  }
+
+  // 4. Guia de tratamiento a la familia atribuida al RBT.
+  for(const re of FL_RBT_FAMILY_GUIDANCE_RES){
+    const hit=text.match(re);
+    if(hit){
+      add('FL_LIMIT_FAMILY_GUIDANCE_PROVIDER','blocker',
+        `El documento atribuye al RBT la prestacion del entrenamiento a padres o cuidadores ("${hit[0].trim()}"). La seccion 4.2.2 de la Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024) restringe el family adaptive behavior treatment guidance al Lead Analyst o al BCaBA.`,
+        'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 4.2.2, family adaptive behavior treatment guidance may be provided only by the Lead Analyst or a BCaBA. Reassign caregiver training to the Lead Analyst or BCaBA.',
+        hit[0].trim(),hit.index);
+      break;
+    }
   }
   return findings;
 }
