@@ -1767,6 +1767,7 @@ async function runAudit(){
     findings=findings.concat(scanNoProgressExplanation(text,state.currentDoc.docType));
     findings=findings.concat(scanNonCoveredServices(text,state.currentDoc.docType));
     findings=findings.concat(scanParentParticipation(text,state.currentDoc.docType));
+    findings=findings.concat(scanAdminRequiredElements(text,state.currentDoc.docType));
     findings=findings.concat(scanAgeConsistency(text));
     findings=findings.concat(scanCommunicationCongruence(text));
     findings=findings.concat(scanSTOIntegrity(text));
@@ -2491,6 +2492,89 @@ function scanCoreInstruments(text,docType,client){
     add('FL_CORE_SCORING_REPORT','warning',
       'Se nombran instrumentos estandarizados pero no se detectan puntuaciones reportadas. La secci\u00f3n 4.2.1 exige que el reporte completo de puntuaci\u00f3n, incluidas las outcome measure scores, se presente con la solicitud de autorizaci\u00f3n.',
       'Include the complete scoring report with outcome measure scores (standard scores, percentiles, composites) for each core instrument, as required by Florida Medicaid Coverage Policy Section 4.2.1 for prior authorization requests.');
+  }
+  return findings;
+}
+
+// FL Medicaid 6.2.2 y 7.2: elementos administrativos del assessment y el plan.
+// La 6.2.2 enumera lo que CADA behavior assessment y behavior plan debe
+// contener, y exige que esten FIRMADOS por el Lead Analyst Y por el padre o
+// tutor. La 7.2 anade el IEP cuando los servicios se prestan en la escuela.
+//
+// Esta regla cubre solo lo que REQUIRED_SECTIONS no comprueba ya: el plan de
+// crisis, el de transicion, la supervision generica y el consentimiento
+// generico los cubre scanCompleteness, y aqui no se repiten. Lo que si se anade
+// es el detalle que 6.2.2 exige y esas secciones genericas no garantizan: los
+// NOMBRES de los supervisores autorizados, la coordinacion de cuidados, el plan
+// de alta como pieza distinta del de transicion, las unidades por codigo con su
+// necesidad medica, y la historia medica con los medicamentos.
+//
+// Severidad warning, agregada en una sola tarjeta. Son elementos requeridos,
+// pero la deteccion es por palabra clave: el contenido puede estar bajo otro
+// encabezado, y el hallazgo lo dice. Es el mismo criterio que ya usa
+// scanCompleteness para las secciones requeridas.
+const FL_ADMIN_ELEMENTS=[
+  {key:'referral',label:'razon de la referencia',
+   re:/\breason\s+for\s+referral\b|\breferral\s+(?:reason|question|source|information)\b|\breferred\s+(?:for|by|due\s+to)\b|\bmotivo\s+de\s+(?:la\s+)?referencia\b/i},
+  {key:'medicalHistory',label:'historia medica y del desarrollo',
+   re:/\bmedical\s+(?:and\s+developmental\s+)?history\b|\bdevelopmental\s+history\b|\bbirth\s+history\b|\bhealth\s+history\b|\bhistoria\s+(?:m[\u00e9e]dica|del\s+desarrollo|cl[\u00ed i]nica)\b/i},
+  {key:'medications',label:'medicamentos prescritos para atenuar conductas',
+   re:/\bmedications?\b|\bprescrib\w+|\bpsychotropic\b|\bmedicamentos?\b|\bmedicaci[\u00f3o]n\b/i},
+  {key:'familyHistory',label:'historia familiar relevante',
+   re:/\bfamily\s+history\b|\brelevant\s+family\b|\bfamily\s+background\b|\bhistoria\s+familiar\b/i},
+  {key:'clinicalInterview',label:'entrevista clinica',
+   re:/\bclinical\s+interview\b|\b(?:caregiver|parent|guardian|family)\s+interview\b|\bstructured\s+interview\b|\bintake\s+interview\b|\bentrevista\s+(?:cl[\u00ed i]nica|con\s+(?:los\s+)?(?:padres|cuidadores))\b/i},
+  {key:'fileReview',label:'revision de evaluaciones o informes recientes (file review)',
+   re:/\b(?:file|record|chart|records)\s+review\b|\breview\s+of\s+(?:recent\s+)?(?:assessments?|reports?|records?|documentation)\b|\brecords?\s+reviewed\b|\bprevious\s+(?:evaluations?|reports?)\s+reviewed\b|\brevisi[\u00f3o]n\s+de\s+(?:expediente|registros|informes|evaluaciones)\b/i},
+  {key:'assessmentProcedures',label:'procedimientos y resultados de la evaluacion',
+   re:/\bassessment\s+(?:procedures?|methods?|tools?|results?|findings?)\b|\bprocedures?\s+and\s+results\b|\bevaluation\s+results?\b|\bprocedimientos?\s+(?:y\s+resultados\s+)?de\s+(?:la\s+)?evaluaci[\u00f3o]n\b/i},
+  {key:'settings',label:'entornos de tratamiento',
+   re:/\btreatment\s+settings?\b|\bservice\s+settings?\b|\bsetting\(s\)|\bservices?\s+(?:will\s+be\s+)?(?:delivered|provided|rendered)\s+(?:in|at)\s+(?:the\s+)?(?:home|clinic|school|community|center)\b|\b(?:home|clinic|school|community)[-\s]based\s+services?\b|\bentornos?\s+de\s+tratamiento\b/i},
+  {key:'unitsPerCode',label:'numero de unidades por codigo de procedimiento',
+   re:/\bunits?\s+(?:requested|per\s+(?:procedure\s+)?code|for\s+each)\b|\bnumber\s+of\s+units\b|\b\d{2,5}\s+units\b|\bunidades\s+(?:solicitadas|por\s+c[\u00f3o]digo)\b/i},
+  {key:'unitsNecessity',label:'necesidad medica de las unidades solicitadas',
+   re:/\bmedical(?:ly)?\s+necess\w+[^.;\n]{0,140}\bunits?\b|\bunits?\b[^.;\n]{0,140}\bmedical(?:ly)?\s+necess\w+|\bjustification\s+for\s+(?:the\s+)?(?:requested\s+)?units\b|\bnecesidad\s+m[\u00e9e]dica\s+de\s+las\s+unidades\b/i},
+  {key:'supervisorNames',label:'nombres de los supervisores autorizados en el plan de supervision',
+   re:/\bauthorized\s+supervisors?\b\s*[:\-\u2013][^\n]{0,60}[A-Za-z]|\bsupervis\w+[^.;\n]{0,120}\b[A-Z][a-zA-Z.'\u2019-]+\s+[A-Z][a-zA-Z.'\u2019-]+\s*,?\s*(?:M\.?S\.?|M\.?A\.?|M\.?Ed\.?|Ph\.?D\.?|Psy\.?D\.?|BCBA|BCaBA)\b|\b(?:BCBA|BCaBA)\b[^.;\n]{0,60}\bsupervis\w+[^.;\n]{0,60}\b[A-Z][a-zA-Z.'\u2019-]+\s+[A-Z]/},
+  {key:'careCoordination',label:'coordinacion de cuidados con familia, escuela o programas estatales',
+   re:/\bcare\s+coordination\b|\bcoordination\s+of\s+care\b|\bcoordinat\w+\s+with\s+(?:the\s+)?(?:school|teacher|pediatrician|physician|therapist|provider|speech|occupational|agency)|\bcollaborat\w+\s+with\s+(?:the\s+)?(?:school|pediatrician|speech|occupational|team|provider)|\bcoordinaci[\u00f3o]n\s+(?:de\s+cuidados?|con\s+(?:la\s+escuela|el\s+equipo))\b/i},
+  {key:'dischargePlan',label:'plan de alta (distinto del plan de transicion)',
+   re:/\bdischarge\s+(?:plan|planning|criteria)\b|\bplan\s+(?:de\s+alta|para\s+el\s+alta)\b/i}
+];
+const FL_SIGNATURE_ANALYST_RE=/\b(?:lead\s+analyst|bcba|behavior\s+analyst|analyst)\b[^.;\n]{0,70}\bsignature\b|\bsignature\b[^.;\n]{0,70}\b(?:lead\s+analyst|bcba|behavior\s+analyst)\b|\bsigned\s+by[^.;\n]{0,60}\b(?:lead\s+analyst|bcba|behavior\s+analyst)\b|\bfirma\s+del?\s+(?:analista|bcba)\b/i;
+const FL_SIGNATURE_GUARDIAN_RE=/\b(?:parent|guardian|caregiver)\b[^.;\n]{0,50}\bsignature\b|\bsignature\b[^.;\n]{0,50}\b(?:parent|guardian|caregiver)\b|\bsigned\s+by[^.;\n]{0,50}\b(?:parent|guardian|caregiver)\b|\bfirma\s+del?\s+(?:padre|madre|tutor|cuidador)\b/i;
+const FL_SCHOOL_DELIVERY_RE=/\bschool[-\s](?:setting|based|site)\b|\bservices?\s+(?:will\s+be\s+)?(?:delivered|provided|rendered)\s+(?:in|at)\s+(?:the\s+)?school\b|\bin[-\s]school\s+services?\b|\bclassroom\s+setting\b|\bservicios?\s+en\s+la\s+escuela\b/i;
+const FL_IEP_RE=/\bIEP\b|\bindividuali[sz]ed\s+education\s+(?:plan|program)\b|\b504\s+plan\b|\bplan\s+504\b/i;
+
+function scanAdminRequiredElements(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+  const add=(ruleId,severity,description,suggestedAction)=>findings.push({
+    id:uid(),ruleId,severity,category:'florida_medicaid',description,suggestedAction,
+    status:'open',createdAt:Date.now()
+  });
+
+  const missing=FL_ADMIN_ELEMENTS.filter(el=>!el.re.test(text)).map(el=>el.label);
+  if(missing.length){
+    add('FL_ADMIN_REQUIRED_ELEMENTS','warning',
+      `No se detectan ${missing.length===1?'un elemento que la':'elementos que la'} Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024, seccion 6.2.2) exige en todo behavior assessment y behavior plan: ${missing.join('; ')}. La deteccion es por palabra clave, asi que si el contenido esta presente bajo otro encabezado, marque el hallazgo como falso positivo.`,
+      'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 6.2.2, each behavior assessment and behavior plan must include patient information, reason for referral, medical and developmental history including medications prescribed to ameliorate behaviors, relevant family history, clinical interview, review of recent assessments/reports, assessment procedures and results, the behavior plan with treatment settings, the number of units for each procedure code with the medical necessity for the units requested, a supervision plan naming the authorized supervisors, care coordination with parents/caregivers, schools and state disability programs, a transition (fading) plan, a crisis management plan, and a discharge plan. Add the missing items under clearly labeled headings.');
+  }
+
+  const sigFalta=[];
+  if(!FL_SIGNATURE_ANALYST_RE.test(text))sigFalta.push('la del Lead Analyst');
+  if(!FL_SIGNATURE_GUARDIAN_RE.test(text))sigFalta.push('la del padre o tutor');
+  if(sigFalta.length){
+    add('FL_ADMIN_SIGNATURES','warning',
+      `No se detecta ${sigFalta.join(' ni ')} en el documento. La seccion 6.2.2 exige que el behavior assessment y el behavior plan esten firmados por el Lead Analyst Y por el padre o tutor del recipient. Advertencia de deteccion: si las firmas son imagenes escaneadas o un bloque de firma grafico, no aparecen en el texto extraido y este aviso puede ser un falso positivo.`,
+      'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 6.2.2, the behavior assessment and behavior plan must be signed by the Lead Analyst and by the recipient\u2019s parent or guardian. Confirm both signature blocks are present and dated before submitting.');
+  }
+
+  if(FL_SCHOOL_DELIVERY_RE.test(text)&&!FL_IEP_RE.test(text)){
+    add('FL_ADMIN_SCHOOL_IEP','warning',
+      'El documento indica prestacion de servicios en la escuela pero no menciona el IEP ni un plan 504. La seccion 7.2 de la Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024) exige que las solicitudes de autorizacion para servicios escolares incluyan el IEP del recipient.',
+      'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 7.2, authorization requests for services delivered in a school must include the recipient\u2019s IEP. If there is no IEP, or the IEP does not contain BA services, include documentation justifying the requested services and an estimated timeframe for when an IEP will be completed or updated. If the school does not conduct IEPs, a 504 plan may be submitted instead; if it conducts neither, include documentation naming the school and explaining that neither plan is available.');
   }
   return findings;
 }

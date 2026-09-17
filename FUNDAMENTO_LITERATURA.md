@@ -214,7 +214,7 @@ Todas citan Florida Medicaid, texto verificado.
 
 **R7 — Participación parental documentada (`FL_PARENT_PARTICIPATION`). ✅ IMPLEMENTADO** como `scanParentParticipation`. Esfuerzos documentados; si no participa, razones + impactos + mitigación; y en continuación, datos de participación. *§4.2.2, §7.2.*
 
-**R8 — Elementos administrativos faltantes.** Firmas (Lead Analyst **y** tutor), nombres de supervisores, care coordination, historia médica con medicamentos, file review, número de unidades por código con su necesidad médica, IEP/504 en servicios escolares. Un bloque de completitud, severidad `warning`, agregado. *§6.2.2, §7.2.*
+**R8 — Elementos administrativos faltantes. ✅ IMPLEMENTADO** como `scanAdminRequiredElements`. Firmas (Lead Analyst **y** tutor), nombres de supervisores, care coordination, historia médica con medicamentos, file review, número de unidades por código con su necesidad médica, IEP/504 en servicios escolares. Un bloque de completitud, severidad `warning`, agregado. *§6.2.2, §7.2.*
 
 **R9 — Techos duros. ✅ IMPLEMENTADO** como `scanFloridaServiceLimits`, **recalibrado**: las reglas de horas son `warning` porque la métrica de intensidad está en disputa entre CASP y el pagador; tamaño de grupo y proveedor autorizado siguen en `blocker`. >40 h/sem, grupo >6, protocol modification atribuido a RBT. `blocker`. *§4.2.2.*
 
