@@ -123,6 +123,22 @@ Es un **indicador de avance** (sube al atender hallazgos), no una calificación 
 
 ---
 
+### Tabla de requisitos con fuente (`AUDIT_REQUIREMENTS`)
+
+**Fuente única de verdad** de qué exige cada regla y de dónde sale. Vive como constante en el HTML porque el auditor se abre desde `file://`, donde `fetch()` está bloqueado; `REQUISITOS_AUDITADOS.md` se **genera** de ella con `node gen_requisitos.js` y es solo una copia legible.
+
+Cada fila: `{id, requisito, fuente, edicion, seccion, severidad, verificacion, reglas[], nota?}`.
+
+- **`verificacion` es el campo que importa**: `primaria` (texto original leído, la cita es citable), `busqueda` (solo resúmenes), `convencion` (práctica del consultorio o dominio codificado a mano). Hoy: **19 primarias, 1 solo búsqueda, 3 convención**.
+- `citationFor(ruleId)` **devuelve `null` si la fuente no es primaria** — nunca se presenta con apariencia de ley algo que no se leyó.
+- `verifiedSourcesForPrompt()` inyecta las fuentes verificadas en el **prompt conceptual**, que ahora ordena citar **desde la lista** y prohíbe inventar sección: *"an incorrect section number in a document that goes to Medicaid is worse than no number at all"*. Sustituye al antiguo "Cite the standard", que hacía al modelo producir secciones desde memoria.
+- `buildRequirementsSectionHTML(findings)` añade al reporte una tabla con las fuentes de los requisitos **realmente presentes** en esa auditoría, con su estado de verificación y el aviso de que lo no verificado no debe citarse con número de sección ante un revisor. Colores inline en hex (invariante 5).
+- **Hace visible lo frágil**: las reglas de CPT (matemática de unidades y modificador HN) quedan marcadas como convención, porque la coverage policy **no enumera códigos CPT** — los delega al fee schedule (Regla 59G-4.002); y la supervisión del 10 % queda como `busqueda`, pendiente de verificar contra el BACB.
+
+**Al añadir o cambiar una regla: añadir o editar su fila, incrementar `AUDITOR_RULES_VERSION` y regenerar el .md.**
+
+---
+
 ### Practice Parameters de IA (CASP/APBA) — gobiernan al auditor, no a los documentos
 
 Tres exigencias implementadas sobre la herramienta misma:

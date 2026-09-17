@@ -240,7 +240,7 @@ Todas citan Florida Medicaid, texto verificado.
 
 ### Bloque C — estructural
 
-**R18 — Tabla de requisitos con fuente.** `{id, requisito, fuente, edición, sección/página, severidad, estado_verificación}` en el repositorio; los prompts trabajan contra ella. Con los dos PDF leídos ya se pueden llenar ~35 filas verificadas. Las citas dejan de ser inventables y actualizar una norma es editar una fila.
+**R18 — Tabla de requisitos con fuente. ✅ IMPLEMENTADO** como `AUDIT_REQUIREMENTS` (23 filas: 19 primarias, 1 búsqueda, 3 convención), con `citationFor`, `verifiedSourcesForPrompt`, sección en el reporte y `REQUISITOS_AUDITADOS.md` generado. **Cubre también R19**: el prompt ya no pide citar de memoria. `{id, requisito, fuente, edición, sección/página, severidad, estado_verificación}` en el repositorio; los prompts trabajan contra ella. Con los dos PDF leídos ya se pueden llenar ~35 filas verificadas. Las citas dejan de ser inventables y actualizar una norma es editar una fila.
 
 **R19 — Dejar de pedir números de sección no verificables.** Mientras R18 no exista, que el modelo cite **estándar y edición** sin inventar el **número de sección**.
 

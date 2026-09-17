@@ -2618,6 +2618,177 @@ function scanGoalsNotDsmCriteria(text,docType){
 // El assent es del CLIENTE y es distinto del consentimiento del tutor, que ya
 // comprueban SEC_CONSENT y la regla de firmas de 6.2.2. Esta regla no se da por
 // satisfecha con el consentimiento del tutor y se lo dice al analista.
+/* ── Tabla de requisitos con su fuente ──────────────────────────────────────
+   El auditor se abre desde file://, donde fetch() esta bloqueado, asi que la
+   tabla NO puede vivir en un JSON externo: es una constante de este archivo y
+   esta constante es la FUENTE UNICA DE VERDAD. REQUISITOS_AUDITADOS.md del
+   repositorio se genera a partir de ella y es solo una copia legible.
+
+   Para que sirve:
+   1. Las citas dejan de ser inventables. Antes el prompt pedia "cite the
+      standard" y el modelo producia numeros de seccion desde memoria, sin que
+      nadie los comprobara. Ahora las fuentes verificadas se inyectan en el
+      prompt conceptual desde aqui.
+   2. Actualizar una norma es editar una fila.
+   3. El reporte puede mostrar, junto a cada hallazgo, la fuente exacta en la
+      que se apoya.
+   4. Hace VISIBLE lo que no esta verificado. El campo `verificacion` distingue
+      entre lo leido en el texto primario, lo que solo proviene de resumenes de
+      busqueda, y la convencion clinica del propio consultorio. Esa distincion
+      es el punto: una regla marcada 'busqueda' o 'convencion' no deberia citar
+      un numero de seccion como si fuera ley.
+
+   verificacion: 'primaria'   = texto original leido; la cita es citable.
+                 'busqueda'   = solo resumenes; NO citar seccion como verificada.
+                 'convencion' = practica del consultorio o dominio codificado a
+                                mano; no procede de un texto normativo.        */
+const AUDIT_REQUIREMENTS=[
+  // ── Florida Medicaid, texto primario leido ───────────────────────────────
+  {id:'FL_4_2_1_CORE_INSTRUMENTS', fuente:'Florida Medicaid BA Services Coverage Policy', edicion:'diciembre 2024', seccion:'4.2.1', verificacion:'primaria', severidad:'blocker',
+   requisito:'La evaluacion inicial debe incluir administracion, puntuacion y reporte del Vineland-3 Comprehensive Parent Interview Form (todos los recipients) mas el Maladaptive Behavior Domain desde los 3 anos, y del BASC-3 PRQ de 2 a 18 anos, con el reporte completo de puntuaciones en la solicitud de autorizacion. En reassessment, cada 12 meses.',
+   reglas:['FL_CORE_VINELAND','FL_CORE_VINELAND_EDITION','FL_CORE_VINELAND_FORM','FL_CORE_MALADAPTIVE_DOMAIN','FL_CORE_BASC_PRQ','FL_CORE_BASC_PRQ_FORM','FL_CORE_SCORING_REPORT']},
+  {id:'FL_4_2_2_LIMITS', fuente:'Florida Medicaid BA Services Coverage Policy', edicion:'diciembre 2024', seccion:'4.2.2', verificacion:'primaria', severidad:'blocker/warning',
+   requisito:'Hasta 40 horas semanales de servicios de intervencion BA; tamano maximo de grupo de seis participantes; adaptive behavior treatment with protocol modification y family adaptive behavior treatment guidance solo por Lead Analyst o BCaBA.',
+   reglas:['FL_LIMIT_WEEKLY_HOURS','FL_LIMIT_WEEKLY_HOURS_TOTAL','FL_LIMIT_GROUP_SIZE','FL_LIMIT_PROTOCOL_MOD_PROVIDER','FL_LIMIT_FAMILY_GUIDANCE_PROVIDER'],
+   nota:'Las reglas de horas son warning y no blocker: la metrica de intensidad esta en disputa entre CASP y el pagador. Ver CASP_INTENSITY_METRIC.'},
+  {id:'FL_4_2_2_PARENT', fuente:'Florida Medicaid BA Services Coverage Policy', edicion:'diciembre 2024', seccion:'4.2.2', verificacion:'primaria', severidad:'blocker',
+   requisito:'El proveedor debe hacer todo esfuerzo por acomodar la participacion parental y documentarlo en las actualizaciones del plan. Si no es posible, deben documentarse las razones, los impactos potenciales y como se mitigan.',
+   reglas:['FL_PARENT_NONPARTICIPATION_DOC','FL_PARENT_ACCOMMODATION_EFFORTS']},
+  {id:'FL_5_2_NON_COVERED', fuente:'Florida Medicaid BA Services Coverage Policy', edicion:'diciembre 2024', seccion:'5.2', verificacion:'primaria', severidad:'blocker/warning',
+   requisito:'No cubiertos: reclusion y restriccion manual, mecanica o quimica; supervision del recipient, cuidado personal, acompanamiento 1:1, companion, chaperone y shadow; cuidador y guarderia; testing psicologico, neuropsicologia, psicoterapia, terapia cognitiva, psicoanalisis, hipnoterapia y consejeria a largo plazo; tiempo de viaje; y servicios el mismo dia que BHOS, TBOS o therapeutic group care.',
+   reglas:['FL_EXCLUDED_RESTRAINT','FL_EXCLUDED_ONE_TO_ONE_AIDE','FL_EXCLUDED_CHILDCARE','FL_EXCLUDED_OTHER_THERAPIES','FL_EXCLUDED_TRAVEL_TIME','FL_EXCLUDED_SAME_DAY_SERVICE']},
+  {id:'FL_6_2_2_GOAL_ELEMENTS', fuente:'Florida Medicaid BA Services Coverage Policy', edicion:'diciembre 2024', seccion:'6.2.2', verificacion:'primaria', severidad:'blocker',
+   requisito:'Cada target, goal u objective debe contener: definicion observable y medible; procedimientos de observacion y medicion directa; nivel actual (linea base); procedimientos de reduccion o adquisicion; condiciones y criterio de dominio; fecha de introduccion; fecha estimada de dominio; plan de generalizacion; y reporte de progreso indicando si se cumplio, no se cumplio o se modifico. Las metas de cuidadores anaden los procedimientos de entrenamiento.',
+   reglas:['FL_GOAL_REQUIRED_ELEMENTS','FL_GOAL_ELEMENT_TBD','PLACEHOLDER_TBD_CONVENTION'],
+   nota:'La norma pide una fecha y un valor ESTIMADOS, de modo que la incertidumbre no justifica dejar estos campos en TBD.'},
+  {id:'FL_6_2_2_ADMIN', fuente:'Florida Medicaid BA Services Coverage Policy', edicion:'diciembre 2024', seccion:'6.2.2', verificacion:'primaria', severidad:'warning',
+   requisito:'El assessment y el plan deben estar firmados por el Lead Analyst y por el padre o tutor, e incluir informacion del paciente, razon de referencia, historia medica y del desarrollo con los medicamentos prescritos para atenuar conductas, historia familiar, entrevista clinica, file review, procedimientos y resultados de la evaluacion, entornos de tratamiento, unidades por codigo con su necesidad medica, plan de supervision con los nombres de los supervisores autorizados, coordinacion de cuidados, plan de transicion, plan de crisis y plan de alta.',
+   reglas:['FL_ADMIN_REQUIRED_ELEMENTS','FL_ADMIN_SIGNATURES']},
+  {id:'FL_6_2_3_REASSESS', fuente:'Florida Medicaid BA Services Coverage Policy', edicion:'diciembre 2024', seccion:'6.2.3', verificacion:'primaria', severidad:'blocker',
+   requisito:'El reassessment debe traer datos de progreso de todas las conductas tratadas, y cada conducta bajo tratamiento debe tener su propia tabla de datos y su grafico correspondiente. Si no hubo progreso clinicamente significativo, debe explicarse por que y que cambios de tratamiento se haran.',
+   reglas:['FL_DATA_PER_BEHAVIOR_TABLES','FL_DATA_PER_BEHAVIOR_GRAPHS','FL_DATA_PER_BEHAVIOR_MANUAL','FL_NO_PROGRESS_EXPLANATION']},
+  {id:'FL_7_2_AUTH', fuente:'Florida Medicaid BA Services Coverage Policy', edicion:'diciembre 2024', seccion:'7.2', verificacion:'primaria', severidad:'blocker/warning',
+   requisito:'Las solicitudes de continuacion deben incluir datos sobre la participacion del padre o tutor. Las solicitudes para servicios escolares deben incluir el IEP; sin IEP, documentacion que justifique los servicios y el plazo estimado del IEP; un plan 504 puede sustituirlo.',
+   reglas:['FL_PARENT_PARTICIPATION_DATA','FL_ADMIN_SCHOOL_IEP']},
+
+  // ── CASP/APBA ASD Assessment Guidelines, texto primario leido ────────────
+  {id:'CASP_DIRECT_OBSERVATION', fuente:'CASP/APBA ASD Assessment Guidelines for Behavior Analysts', edicion:'marzo 2026', seccion:'cap. 3, p. 22', verificacion:'primaria', severidad:'blocker/warning',
+   requisito:'La observacion directa y la medicion son primarias, el corazon del ABA; las medidas indirectas solo las SUPLEMENTAN. Una funcion sostenida unicamente en una escala o entrevista no cumple el estandar.',
+   reglas:['FUNCTION_EVIDENCE_SOURCE','FUNCTION_EVIDENCE_SOURCE_PER_BEHAVIOR']},
+  {id:'CASP_IOA', fuente:'CASP/APBA ASD Assessment Guidelines for Behavior Analysts', edicion:'marzo 2026', seccion:'cap. 4, p. 42', verificacion:'primaria', severidad:'notice',
+   requisito:'El IOA evalua la fiabilidad del dato comparando observadores independientes, revela deriva del observador y senala definiciones que necesitan aclararse.',
+   reglas:['IOA_PROTOCOL_MODIFICATION']},
+  {id:'CASP_PROCEDURAL_FIDELITY', fuente:'CASP/APBA ASD Assessment Guidelines for Behavior Analysts', edicion:'marzo 2026', seccion:'cap. 4, p. 43', verificacion:'primaria', severidad:'warning',
+   requisito:'La fidelidad procedimental de la implementacion debe medirse y evaluarse, con lista paso a paso puntuada Si/No que produce un porcentaje de adherencia y adherencia total como meta. Es un requisito SEPARADO del IOA.',
+   reglas:['PROCEDURAL_FIDELITY','PROCEDURAL_FIDELITY_CRITERION']},
+  {id:'CASP_DOMAINS', fuente:'CASP/APBA ASD Assessment Guidelines for Behavior Analysts', edicion:'marzo 2026', seccion:'cap. 5, p. 54', verificacion:'primaria', severidad:'warning',
+   requisito:'Cuatro dominios primarios de evaluacion: caracteristicas nucleares del TEA, conducta y funcionamiento adaptativo, bienestar y calidad de vida, y condiciones co-ocurrentes y caracteristicas asociadas.',
+   reglas:['SEC_ASSESSMENT_DOMAINS']},
+  {id:'CASP_NOT_DSM_CHECKLIST', fuente:'CASP/APBA ASD Assessment Guidelines for Behavior Analysts', edicion:'marzo 2026', seccion:'cap. 5, p. 54', verificacion:'primaria', severidad:'warning',
+   requisito:'Advierte contra usar los criterios diagnosticos como lista de objetivos de tratamiento; las intervenciones deben alinearse con resultados significativos para el cliente y su sistema de apoyo.',
+   reglas:['GOALS_NOT_DSM_CRITERIA']},
+  {id:'CASP_ASSENT', fuente:'CASP/APBA ASD Assessment Guidelines for Behavior Analysts', edicion:'marzo 2026', seccion:'cap. 2, p. 18', verificacion:'primaria', severidad:'warning',
+   requisito:'El consentimiento informado debe incluir el assent del cliente que esta siendo evaluado, con todos los interesados comprendiendo proposito, procedimientos y riesgos.',
+   reglas:['SEC_ASSENT']},
+  {id:'CASP_GOAL_LINK', fuente:'CASP/APBA ASD Assessment Guidelines for Behavior Analysts', edicion:'marzo 2026', seccion:'cap. 6, p. 59', verificacion:'primaria', severidad:'warning',
+   requisito:'La informacion recogida en la evaluacion debe enlazarse directamente con el diseno del protocolo y con la justificacion de por que se eligieron esas conductas como objetivo.',
+   reglas:['GOAL_ASSESSMENT_LINK']},
+  {id:'CASP_LIMITATIONS', fuente:'CASP/APBA ASD Assessment Guidelines for Behavior Analysts', edicion:'marzo 2026', seccion:'cap. 3 p. 40 y cap. 6 p. 61', verificacion:'primaria', severidad:'warning',
+   requisito:'La documentacion de las limitaciones del instrumento y de la justificacion clinica es esencial; cuando el financiador exige un instrumento que no captura bien las necesidades del cliente, hay que comunicar la limitacion y justificar medidas alternativas.',
+   reglas:['ASSESSMENT_LIMITATIONS']},
+  {id:'CASP_ECOBEHAVIORAL', fuente:'CASP/APBA ASD Assessment Guidelines for Behavior Analysts', edicion:'marzo 2026', seccion:'cap. 3 p. 38 y Apendice B', verificacion:'primaria', severidad:'notice',
+   requisito:'El analisis ecoconductual examina fortalezas y barreras ambientales; los determinantes sociales de la salud explican entre el 30 y el 55 % de los resultados en salud.',
+   reglas:['ECOBEHAVIORAL_BARRIERS']},
+
+  // ── CASP Evidence About ABA Treatment, texto primario leido ──────────────
+  {id:'CASP_INTENSITY_METRIC', fuente:'CASP, Evidence About ABA Treatment for Young Children with Autism', edicion:'s.f.', seccion:'p. 11-13', verificacion:'primaria', severidad:'warning',
+   requisito:'La intensidad son las horas entregadas DIRECTAMENTE al paciente, excluyendo manejo del caso, entrenamiento a cuidadores, evaluacion de datos y supervision de protocolos. Comprehensivo de alta intensidad 30-40 h/sem durante al menos dos anos; focalizado de alcance estrecho 6-15 h/sem; focalizado sobre conducta grave 25-40 h/sem; comprehensivo de baja intensidad, apropiado en pocos casos.',
+   reglas:['SCOPE_INTENSITY_COMPREHENSIVE_LOW','SCOPE_INTENSITY_FOCUSED_HIGH'],
+   nota:'La propia fuente senala que los pagadores que suman las horas no directas no usan la metrica de los estudios. De ahi que FL_4_2_2_LIMITS informe en vez de bloquear.'},
+
+  // ── Practice Parameters de IA, texto primario leido ──────────────────────
+  {id:'CASP_AI_PARAMETERS', fuente:'CASP/APBA Practice Parameters for Artificial Intelligence Use in Applied Behavior Analysis', edicion:'s.f.', seccion:'Transparencia, Monitoreo y auditoria, Reporte de errores', verificacion:'primaria', severidad:'n/a',
+   requisito:'Gobierna a esta herramienta, no a los documentos auditados: trazabilidad para rastrear errores hasta su origen, revelacion del alcance del uso de IA con alternativa sin IA, y canal estructurado de reporte de errores.',
+   reglas:['(herramienta: AUDITOR_RULES_VERSION, summarizeAiScope, reportFindingError)']},
+
+  // ── NO VERIFICADO contra texto primario en este proyecto ─────────────────
+  {id:'CPT_UNIT_MATH', fuente:'Convencion del consultorio y fee schedule de Florida', edicion:'-', seccion:'-', verificacion:'convencion', severidad:'blocker',
+   requisito:'Unidades = horas por semana x 4 unidades por hora x 26 semanas para un periodo de autorizacion de seis meses.',
+   reglas:['CPT_UNITS_MATH'],
+   nota:'La policy confirma el periodo de hasta seis meses (4.2.1) pero NO enumera codigos CPT ni la aritmetica de unidades: los delega al fee schedule (Regla 59G-4.002). Verificar contra el fee schedule antes de citar seccion.'},
+  {id:'CPT_HN_MODIFIER', fuente:'Convencion del consultorio y fee schedule de Florida', edicion:'-', seccion:'-', verificacion:'convencion', severidad:'warning',
+   requisito:'El modificador HN en 97155 y 97156 designa al BCaBA como proveedor; sin HN, al BCBA.',
+   reglas:['CPT_HN_MODIFIER_PROVIDER'],
+   nota:'No aparece en el texto de la coverage policy leido. La policy si restringe protocol modification y family guidance al Lead Analyst o BCaBA (4.2.2), que es el requisito verificable.'},
+  {id:'BACB_SUPERVISION_10PCT', fuente:'BACB', edicion:'sin verificar', seccion:'sin verificar', verificacion:'busqueda', severidad:'warning',
+   requisito:'Supervision minima del 10 % de las horas de servicio directo del RBT.',
+   reglas:['SUPERVISION_10PCT'],
+   nota:'Pendiente de verificar contra el texto vigente del BACB antes de citar una seccion.'},
+  {id:'ABA_PROHIBITED_PROCEDURES', fuente:'Dominio clinico codificado a mano (BACB, CASP)', edicion:'-', seccion:'-', verificacion:'convencion', severidad:'blocker',
+   requisito:'Planned ignoring nunca para agresion, SIB, elopement o destruccion; response blocking con limite de 10-15 s; DRL nunca para conductas peligrosas; RIRD para automatico/sensorial; los cuidadores no recolectan datos; un reemplazo es valido solo si es funcionalmente equivalente.',
+   reglas:['DRL_DANGEROUS','PROH_PLANNED_IGNORING_AGGRESSION','RESPONSE_BLOCKING_DURATION','(terminos e intervenciones prohibidas)'],
+   nota:'Reglas clinicas de Rolando. No derivadas de una lectura automatizada de las fuentes; no citar seccion.'}
+];
+
+// Requisito que respalda una regla, para mostrar la fuente junto al hallazgo.
+// Seccion del reporte que declara, para los hallazgos realmente presentes, la
+// fuente exacta en la que se apoya cada uno. Colores inline en hex: Word y el
+// HTML exportado descartan las clases CSS (invariante 5).
+function buildRequirementsSectionHTML(findings){
+  const ids={};
+  (findings||[]).forEach(f=>{if(f&&f.ruleId)ids[f.ruleId]=true;});
+  const usados=AUDIT_REQUIREMENTS.filter(r=>(r.reglas||[]).some(x=>ids[x]));
+  if(!usados.length)return '';
+  const etiqueta={primaria:'Texto primario le\u00eddo',busqueda:'Solo b\u00fasqueda \u2014 sin verificar',convencion:'Convenci\u00f3n cl\u00ednica \u2014 no normativa'};
+  const color={primaria:'#2E7D32',busqueda:'#E65100',convencion:'#6A1B9A'};
+  const filas=usados.map(r=>{
+    const cita=r.verificacion==='primaria'?`${escapeHtml(r.fuente)} (${escapeHtml(r.edicion)}), ${escapeHtml(r.seccion)}`:escapeHtml(r.fuente);
+    return `<tr>
+      <td style="border:1px solid #CFD8DC;padding:6px 8px;font-size:12px;color:#37474F;vertical-align:top">${cita}</td>
+      <td style="border:1px solid #CFD8DC;padding:6px 8px;font-size:12px;color:#5C5752;vertical-align:top">${escapeHtml(r.requisito)}${r.nota?`<br><span style="color:#8D6E63;font-style:italic">${escapeHtml(r.nota)}</span>`:''}</td>
+      <td style="border:1px solid #CFD8DC;padding:6px 8px;font-size:11px;color:${color[r.verificacion]||'#5C5752'};vertical-align:top;white-space:nowrap">${etiqueta[r.verificacion]||escapeHtml(r.verificacion)}</td>
+    </tr>`;
+  }).join('');
+  const hayNoVerificado=usados.some(r=>r.verificacion!=='primaria');
+  return `
+    <h2 style="color:#37474F;border-bottom:2px solid #546E7A">Requisitos auditados y sus fuentes</h2>
+    <p style="font-size:12px;color:#546E7A;font-style:italic;margin-bottom:10px">Cada hallazgo de este reporte se apoya en uno de los requisitos siguientes. La \u00faltima columna declara c\u00f3mo se verific\u00f3 la fuente.${hayNoVerificado?' <strong>Los requisitos que no figuran como texto primario le\u00eddo no deben citarse ante un revisor con n\u00famero de secci\u00f3n</strong>: proceden de res\u00famenes o de la convenci\u00f3n cl\u00ednica del consultorio.':''}</p>
+    <table style="border-collapse:collapse;width:100%;margin-bottom:1rem">
+      <tr>
+        <th style="border:1px solid #CFD8DC;padding:6px 8px;font-size:11px;color:#37474F;background:#ECEFF1;text-align:left">Fuente</th>
+        <th style="border:1px solid #CFD8DC;padding:6px 8px;font-size:11px;color:#37474F;background:#ECEFF1;text-align:left">Requisito</th>
+        <th style="border:1px solid #CFD8DC;padding:6px 8px;font-size:11px;color:#37474F;background:#ECEFF1;text-align:left">Verificaci\u00f3n</th>
+      </tr>
+      ${filas}
+    </table>`;
+}
+
+function requirementFor(ruleId){
+  if(!ruleId)return null;
+  for(const r of AUDIT_REQUIREMENTS){
+    if((r.reglas||[]).indexOf(ruleId)!==-1)return r;
+  }
+  return null;
+}
+
+// Cita corta para la tarjeta o el reporte. Devuelve null si la regla no esta en
+// la tabla, o si su fuente NO esta verificada contra texto primario: en ese caso
+// no se presenta una cita con apariencia de ley.
+function citationFor(ruleId){
+  const r=requirementFor(ruleId);
+  if(!r||r.verificacion!=='primaria')return null;
+  return `${r.fuente} (${r.edicion}), ${r.seccion}`;
+}
+
+// Bloque de fuentes verificadas para inyectar en el prompt conceptual, de modo
+// que el modelo cite DESDE LA TABLA y no desde su memoria de entrenamiento.
+function verifiedSourcesForPrompt(){
+  return AUDIT_REQUIREMENTS
+    .filter(r=>r.verificacion==='primaria'&&r.severidad!=='n/a')
+    .map(r=>`- ${r.fuente} (${r.edicion}), ${r.seccion}: ${r.requisito}`)
+    .join('\n');
+}
+
 /* Practice Parameters for Artificial Intelligence Use in Applied Behavior
    Analysis (CASP/APBA) - tres exigencias que gobiernan a ESTA herramienta, no a
    los documentos que audita:
@@ -4573,7 +4744,7 @@ Example finding: {"description":"Non-observable emotional term 'frustrated' used
 DOCUMENT TEXT:
 ${docForAudit}
 
-STANDARD-BASED REVIEW (CRITICAL): Only note something if it relates to a specific requirement of: Florida Medicaid Behavior Analysis Services Coverage Policy (December 2024), CASP ABA Practice Guidelines 3rd Edition (2024), CASP/APBA ASD Assessment Guidelines (March 2026), or BACB Ethics Code for Behavior Analysts (2020). Cite the standard in the "suggested_action". Do NOT flag style preferences unrelated to these standards.
+STANDARD-BASED REVIEW (CRITICAL): Only note something if it relates to a specific requirement of: Florida Medicaid Behavior Analysis Services Coverage Policy (December 2024), CASP ABA Practice Guidelines 3rd Edition (2024), CASP/APBA ASD Assessment Guidelines (March 2026), or BACB Ethics Code for Behavior Analysts (2020). Do NOT flag style preferences unrelated to these standards.\n\nVERIFIED SOURCE REQUIREMENTS \u2014 CITE ONLY FROM THIS LIST. The following requirements were read from the primary source documents and their section and page references are confirmed. When your "suggested_action" cites a standard, take the citation VERBATIM from this list. If the point you are raising is NOT covered by this list, name the standard and its edition WITHOUT inventing a section or page number \u2014 an incorrect section number in a document that goes to Medicaid is worse than no number at all.\n${verifiedSourcesForPrompt()}\n
 
 TONE REQUIREMENT — VERY IMPORTANT: This feedback goes directly to the analyst who wrote the document. Write as a supportive clinical colleague, not as an auditor catching fraud. Use constructive, educational language:
 - Instead of "This is non-compliant" → "This section would benefit from..."
@@ -6304,6 +6475,7 @@ function buildReportHTML(client,doc,audit,consultantName,consultantCreds,closing
 
     ${closing?`<h2>Recomendaciones adicionales del consultor</h2><p>${escapeHtml(closing).replace(/\n/g,'<br>')}</p>`:''}
     
+    ${buildRequirementsSectionHTML(findings)}
     <h2>Declaración del consultor</h2>
     <p>Los hallazgos anteriores fueron generados mediante una combinación de escaneo determinístico basado en reglas y revisión conceptual asistida por IA. Todos los hallazgos deben ser considerados por el analista responsable del documento; el analista conserva la responsabilidad clínica completa del documento final enviado al financiador.</p>
     <p>Este reporte no constituye asesoramiento legal y no sustituye al juicio clínico del BCBA responsable.</p>
