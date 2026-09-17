@@ -1,6 +1,6 @@
 # Fundamento en la literatura y recomendaciones para el auditor
 
-> Documento de trabajo. Responde a dos preguntas: (1) ¿el auditor consulta la literatura?, y (2) ¿qué debe contener un assessment "lo mejor posible" según esa literatura, y qué le falta hoy al auditor para exigirlo?
+> Documento de trabajo. Responde a dos preguntas: (1) ¿el auditor consulta la literatura?, y (2) ¿qué debe contener un assessment "lo mejor posible" según las fuentes vinculantes, y qué le falta hoy al auditor para exigirlo?
 >
 > **Estado:** propuesta. Ninguna regla clínica de §6 de `CONTEXTO_AUDITOR_Claude_Code.md` se cambia sin aprobación de Rolando.
 
@@ -11,225 +11,264 @@
 Verificado en el código (`ABA_Assessment_Auditor_v2.html`):
 
 - **Cero herramientas de recuperación.** No hay `web_search`, ni RAG, ni ningún `tools:[...]` en los 10 sitios de llamada a la API. El único tráfico saliente es a `api.anthropic.com/v1/messages` con texto plano.
-- **Los estándares se citan por nombre, 10 veces, dentro de los prompts:** "Florida Medicaid Behavior Analysis Services Coverage Policy (December 2024)", "CASP ABA Practice Guidelines 3rd Edition (2024)", "CASP/APBA ASD Assessment Guidelines (March 2026)", "BACB Ethics Code 2020". El modelo responde desde su **memoria de entrenamiento**, no desde el texto de esas fuentes.
-- Las reglas deterministas (términos prohibidos, matemática CPT, modificador HN, contraindicaciones de DRL/planned ignoring) son **conocimiento de dominio que Rolando codificó a mano**, no derivado de una lectura de las fuentes.
+- **Los estándares se citan por nombre, 10 veces, dentro de los prompts.** El modelo responde desde su **memoria de entrenamiento**, no desde el texto de esas fuentes.
+- Las reglas deterministas son **conocimiento de dominio que Rolando codificó a mano**, no derivado de una lectura de las fuentes.
 
-### Qué implica
+Riesgos: citas de sección no verificables; deriva silenciosa cuando las normas se actualizan; y cobertura desigual — lo que nunca se codificó a mano no se audita, y su ausencia no es visible en el reporte.
 
-| Riesgo | Detalle |
-|---|---|
-| **Citas no verificables** | El prompt pide "cite the standard in suggested_action". El modelo produce números de sección desde memoria: puede errar el número, la edición, o atribuir a un estándar un requisito que está en otro. Nadie lo comprueba. |
-| **Deriva con las actualizaciones** | Florida Medicaid revisa 59G-4.125 periódicamente; CASP publicó la v3.0 en mayo de 2024; estas guías de assessment son de marzo de 2026. Un auditor que cita de memoria envejece sin avisar. |
-| **Cobertura desigual** | Lo que Rolando codificó a mano está bien cubierto y es defendible. Lo que nunca se codificó (assent, validez social, fidelidad procedimental, dominios de evaluación) no se audita, y su ausencia no es visible en el reporte. |
+**La conclusión no es "añadir búsqueda web al auditor".** Un assessment se audita contra requisitos estables, y una llamada desde el navegador con la clave del usuario no es lugar para recuperación documental. Lo correcto es **fijar los requisitos por escrito en el repositorio, con su fuente**, y que los prompts trabajen contra esa lista. Este documento es el primer paso.
 
-**La conclusión no es "añadir búsqueda web al auditor".** Un assessment se audita contra requisitos estables, y una llamada desde el navegador con la clave del usuario no es lugar para recuperación documental. Lo correcto es **fijar los requisitos por escrito en el repositorio, con su fuente**, y que los prompts trabajen contra esa lista explícita. Este documento es el primer paso.
-
-### Estado de verificación de cada fuente
+### Estado de verificación
 
 | Fuente | Estado |
 |---|---|
-| **CASP/APBA, ASD Assessment Guidelines for Behavior Analysts (marzo 2026)** | ✅ **Texto primario leído** (79 pp., PDF aportado por Rolando). Todo lo marcado **[P]** sale de este documento, con capítulo y página. |
-| CASP ABA Practice Guidelines v3.0 (2024) | ⚠️ Solo resúmenes de búsqueda **[V]** |
-| Florida Medicaid BA Services Coverage Policy (dic. 2024) / 59G-4.125 | ⚠️ Solo resúmenes de búsqueda **[V]** |
-| BACB Ethics Code | ⚠️ Solo referencias indirectas **[V]**; los números de sección **no** están verificados |
-| Literatura revisada por pares (adecuación técnica FBA/BIP, fidelidad) | ⚠️ Solo resúmenes de búsqueda **[V]** |
+| **Florida Medicaid, Behavior Analysis Services Coverage Policy, diciembre 2024** (incorporada por referencia en la Regla 59G-4.125, F.A.C.) | ✅ **Texto primario leído** (12 pp.) |
+| **CASP/APBA, ASD Assessment Guidelines for Behavior Analysts (marzo 2026)** | ✅ **Texto primario leído** (79 pp.) |
+| CASP ABA Practice Guidelines v3.0 (2024) | ⚠️ Solo resúmenes de búsqueda |
+| BACB Ethics Code | ⚠️ Solo referencias indirectas; números de sección **no** verificados |
+| Literatura revisada por pares | ⚠️ Solo resúmenes de búsqueda |
 
-El proxy de egreso de la sesión bloqueó la descarga directa de `casproviders.org`, `ahca.myflorida.com`, `bacb.com`, `ncbi.nlm.nih.gov`, `pmc.ncbi.nlm.nih.gov`, `mdpi.com`, `law.cornell.edu` y `neurosciences.ucsd.edu`. Aportar esos PDF como hizo Rolando con el de CASP/APBA es lo que convierte **[V]** en **[P]**.
+**[P]** = fuente primaria leída, citable. **[V]** = solo búsqueda; no debe citarse sección hasta verificarse.
 
-**Regla de trabajo: solo lo marcado [P] puede convertirse en una regla que marque un documento citando su fuente.** Lo marcado [V] se implementa como pregunta o nota de apoyo, o espera a verificarse.
-
----
-
-## 2. Lo que exige la fuente primaria (CASP/APBA 2026) — [P]
-
-### 2.1 Evaluación multimodal: ningún instrumento basta por sí solo
-
-> "no single assessment tool or fixed set of instruments can provide all of the information needed to develop an effective treatment plan or evaluate progress for every autistic individual" — consenso NASEM 2025, citado en cap. 3, p. 22.
-
-La evaluación multimodal combina **revisión de registros, entrevistas, observación directa, y evaluaciones formales e informales (estandarizadas y no estandarizadas)**. La lógica declarada: cada modo tiene fortalezas y debilidades, y el enfoque multimodal permite "apoyarse en las fortalezas de una evaluación y resolver sus déficits mediante otra". (cap. 3, p. 22)
-
-**La revisión de registros es uno de los primeros pasos**, y dentro de ella la **evaluación diagnóstica del cliente** es un registro que el analista "debe saber leer y debe priorizar revisar" — típicamente incluye medidas cognitivas, adaptativas, de lenguaje, de logro y/o del desarrollo. (cap. 3)
-
-### 2.2 La observación directa es primaria; lo indirecto suplementa
-
-> "practitioners should prioritize the use of direct observation and measurement—the heart of ABA. This may involve conducting a functional analysis of an interfering behavior to hypothesize the function. **Indirect measures supplement direct measures**" — cap. 3, p. 22.
-
-Las medidas indirectas aportan prioridades del cliente, cuidador e interesados, y sirven para saber si los interesados perciben el progreso que muestran otras medidas. **Pero no sustituyen la medición directa.**
-
-> Consecuencia para el auditor: una función hipotetizada sostenida **solo** en un FAST o un MAS no cumple el estándar. Esto es exactamente lo que hoy no se comprueba.
-
-### 2.3 Cuatro dominios de evaluación
-
-Los dominios primarios (cap. 5, Key Points, p. 54):
-
-- **(a) Características nucleares del TEA** — comunicación social y conductas restringidas
-- **(b) Conducta y funcionamiento adaptativo**
-- **(c) Bienestar y calidad de vida**
-- **(d) Condiciones co-ocurrentes y características asociadas** — salud mental, discapacidad intelectual, trastornos del lenguaje
-
-Con instrumentos estandarizados y no estandarizados, seleccionados según metas centradas en el cliente, comprendiendo alcance, limitaciones y uso apropiado dentro de las guías legales y profesionales.
-
-### 2.4 Advertencia explícita: los criterios diagnósticos no son una lista de objetivos
-
-> "It **warns against using diagnostic criteria as checklists for treatment targets** and instead promotes aligning interventions with outcomes meaningful to the client and their support system." — cap. 5, Key Points, p. 54.
-
-> Esto es directamente auditable y hoy no se audita: metas que reproducen criterios DSM ("déficits en reciprocidad socioemocional") en lugar de resultados significativos para el cliente.
-
-### 2.5 IOA y fidelidad procedimental son cosas distintas — y ambas se exigen
-
-El capítulo 4 se titula "The Reliability and Procedural Fidelity of Assessment Delivery" y las trata por separado.
-
-**IOA** (p. 42) evalúa la fiabilidad de la recolección de datos: dos o más observadores registran independientemente la misma dimensión, comparan y calculan el porcentaje de acuerdo. Sirve para detectar **deriva del observador** y para saber si **las definiciones conductuales o los procedimientos de registro necesitan aclararse**. Ante discrepancias: entrenamiento adicional y revisión de definiciones. Estrategias admitidas para reducir carga: enfocar conductas de baja frecuencia y alta preocupación, acuerdo proporcional vs. exacto, datos resumen del observador primario, muestreo de IOA.
-
-**Fidelidad procedimental** (p. 43):
-
-> "Just as practitioners measure the treatment fidelity of ABA-based services, they should also measure and evaluate the **procedural fidelity of assessment implementation**."
-
-Herramienta: una lista de verificación conductual donde cada paso del protocolo se puntúa "Yes"/"No", produciendo un **porcentaje de adherencia**. Tres propósitos: (a) auto-monitoreo y retroalimentación del clínico, (b) supervisión y seguimiento de competencia, (c) **validación de los datos recolectados**. La meta es **adherencia total**, "especialmente al usar herramientas estandarizadas, donde la fidelidad procedimental afecta directamente la validez de los resultados".
-
-> El auditor hoy solo comprueba IOA, y solo cuando hay 97155. Le falta la fidelidad procedimental **y** la distinción entre ambas.
-
-### 2.6 Consentimiento informado **incluyendo assent del cliente**
-
-> "Informed consent, **including assent from the client being assessed**, must be obtained, with all stakeholders clearly understanding the purpose, procedures, and potential risks of the assessment." — cap. 2, Key Points, p. 18.
-
-No es opcional ni una tendencia: está en los puntos clave del capítulo de ética.
-
-### 2.7 Competencia, calificaciones del editor y alcance de práctica
-
-El analista debe estar entrenado en **administrar, puntuar e interpretar** cada instrumento, y buscar consulta o supervisión cuando haga falta. Debe respetar las **calificaciones exigidas por el editor** del instrumento y las restricciones regulatorias de su alcance de práctica. Si involucra técnicos (donde esté permitido), debe darles entrenamiento y supervisión suficientes. (cap. 2 y cap. 6, Key Points)
-
-### 2.8 Limitaciones documentadas y justificación clínica
-
-> "Clear documentation of **assessment limitations and clinical rationale** is essential to ensure ethical, transparent, and individualized assessment practices." — cap. 3, Key Points, p. 40.
-
-Caso explícito: cuando **la fuente de financiamiento exige un instrumento** que no captura bien las necesidades del cliente, el analista debe comunicar las limitaciones del resultado y **justificar la selección de medidas alternativas** más apropiadas. También debe **declinar respetuosamente** un instrumento cuando su uso sería un gasto innecesario del tiempo del cliente. (cap. 2 y cap. 6, Key Points)
-
-### 2.9 Ambiente natural y línea base
-
-> "evaluations conducted in **natural settings**, when appropriate, provide a **more accurate baseline** and contextual variable critical for effective treatment planning and outcomes." — cap. 6, Key Points, p. 61.
-
-### 2.10 Análisis ecoconductual y determinantes sociales de la salud
-
-El análisis ecoconductual examina **fortalezas y barreras ambientales** que influyen en la conducta, recogidas por observación directa, entrevistas al cuidador e instrumentos de calidad de vida. Componente central: los **determinantes sociales de la salud (SDOH)**, que según la OMS explican **30–55 % de los resultados en salud**. (cap. 3, p. 38 y Apéndice B, p. 78)
-
-Ejemplo del propio documento: *un niño con ausentismo escolar crónico probablemente no se beneficie de una intervención basada en centro a menos que se aborden las barreras de asistencia.* Estresores como relaciones familiares tensas, alta emoción expresada y acceso educativo limitado se asocian con mayor estrés del cuidador y afectan la participación y el éxito del tratamiento.
-
-### 2.11 El vínculo evaluación → metas debe ser explícito
-
-> "A practitioner should **directly link the information gathered from the assessment to protocol design and the rationale for targeting specific behaviors** for treatment." — cap. 6, p. 59.
-
-El proceso descrito: puntuaciones ajustadas demográficamente de instrumentos normativos → identificar áreas de impairment, déficits de habilidades y conductas interferentes → sintetizar con evaluaciones criteriales o basadas en habilidades → derivar metas de corto y largo plazo → **correlacionar esos objetivos con los dominios identificados en la selección inicial de instrumentos**.
+> **Hallazgo transversal:** la política de Florida Medicaid establece que "**All services must be delivered in accordance with the current practice standards as published by the Council of Autism Service Providers**" (§4.2, dic. 2024). Es decir, **las guías de CASP son vinculantes por incorporación**, no meramente recomendables. Eso da respaldo regulatorio directo a las reglas basadas en CASP.
 
 ---
 
-## 3. Lo que aporta la literatura secundaria — [V]
+## 2. ⚠️ Conflicto con el cambio de TBD de hoy — requiere tu decisión
 
-Pendiente de verificación contra texto primario, pero convergente.
+El cambio que implementamos esta sesión exime de marcar los "TBD" de fechas y de conductas/reemplazos nuevos. La política de Florida Medicaid, §6.2.2, **exige literalmente**, para **cada** target, goal u objective:
 
-**El emparejamiento función ↔ intervención es el predictor de calidad.** En estudios de adecuación técnica de FBA/BIP en escuelas, los planes reales puntúan solo entre **40 % y 50 %** de los componentes esperados, y se hallaron asociaciones fuertes entre la calidad global del FBA-BIP y (a) la función de la conducta y (b) si las estrategias estaban emparejadas con esa función. Existen instrumentos formales: la TATE, la lista de 11 ítems de Van Acker, y un instrumento de 31 indicadores en 8 dimensiones.
+> ▪ Definition in observable, measurable terms · ▪ Direct observation and measurement procedures · ▪ Current level (baseline) · ▪ Behavior reduction or acquisition procedures · ▪ Condition(s) under which behavior is to be demonstrated and mastery criteria · ▪ **Date of introduction** · ▪ **Estimated date of mastery** · ▪ Plan for generalization · ▪ Timely reporting of progress…
 
-> **Esto valida el módulo más valioso del auditor.** `runFunctionalCoherenceAudit` ataca exactamente la variable que la literatura asocia con la calidad global. Es el módulo a reforzar antes que cualquier otro.
+Y repite **date of introduction** y **estimated date of mastery** para las metas de entrenamiento a cuidadores.
 
-**Calidad de metas.** Una meta medible conecta un resultado socialmente significativo con una respuesta observable, más: línea base actual, condiciones, método de medición, criterio justificado, expectativa de generalización o mantenimiento, y regla de revisión. **Generalización y mantenimiento son distintos**: aplicar la habilidad en otros contextos vs. conservarla en el tiempo.
+**Lo que esto significa:**
 
-**Fidelidad de tratamiento**: tres dimensiones que predicen resultados de forma diferenciada — **adherencia** (qué componentes se implementaron), **calidad** (cuán bien) y **exposición** (con qué frecuencia y por cuánto tiempo).
+| Uso de TBD | Veredicto |
+|---|---|
+| Fecha de inicio de servicios, período de autorización, próxima revisión — dependen del QIO | **Tu criterio se sostiene.** No hay requisito que obligue a fijarlas antes de la aprobación |
+| **`Date of introduction` o `Estimated date of mastery` de una meta** | **Es un elemento requerido faltante.** La norma pide una fecha *estimada* — precisamente porque no se exige certeza, el "TBD" no queda justificado |
+| Línea base ("current level") de una conducta nueva | **También es elemento requerido.** §6.2.2 lo exige por meta, sin excepción por novedad |
 
-**Dosis (CASP v3.0)**: debe reflejar metas, necesidades y respuesta al tratamiento; rangos de referencia **30–40 h/sem comprehensivo, 10–25 h/sem focalizado**. ⚠️ No verificado contra el texto de CASP v3.0.
+Mi implementación actual clasifica como válido un TBD junto a `baseline`, `mastery`, `criteri`, `goal` u `objective` en un reassessment — es decir, **exime justo los campos que la norma exige**. Un revisor del QIO puede denegar por eso.
 
----
-
-## 4. Brechas del auditor
-
-Contra `REQUIRED_SECTIONS`, las reglas deterministas y los prompts actuales.
-
-| # | Requisito | Hoy | Brecha |
-|---|---|---|---|
-| 1 | Función sostenida en medición **directa**, con lo indirecto como suplemento **[P §2.2]** | `SEC_HYPOTHESIZED_FUNCTION` busca palabras clave (`mas`, `fast`, `abc`); el rediseño marca "verificar FAST/MAS" solo si la función fue inferida | **No exige método ni convergencia.** Una función declarada sin origen, o sostenida solo en una escala indirecta, pasa |
-| 2 | Emparejamiento función ↔ reemplazo ↔ intervención **[V]** | `runFunctionalCoherenceAudit` | Cubierto; es el módulo más fuerte |
-| 3 | Assent del cliente además del consentimiento **[P §2.6]** | `SEC_CONSENT` busca firma del guardián | **Ausente** |
-| 4 | Cuatro dominios de evaluación **[P §2.3]** | `SEC_STRENGTHS` opcional, menciona Vineland | **Ausente como requisito.** Bienestar/calidad de vida y condiciones co-ocurrentes no se comprueban |
-| 5 | Metas ≠ criterios diagnósticos **[P §2.4]** | — | **Ausente** |
-| 6 | Fidelidad procedimental, distinta del IOA **[P §2.5]** | Solo IOA, solo con 97155 | **Ausente**, y se confunden ambos conceptos |
-| 7 | Limitaciones del instrumento documentadas **[P §2.8]** | — | **Ausente** |
-| 8 | Vínculo explícito evaluación → meta **[P §2.11]** | — | **Ausente.** Nada exige que cada objetivo trace a un hallazgo de la evaluación |
-| 9 | Análisis ecoconductual / SDOH / barreras **[P §2.10]** | — | **Ausente** |
-| 10 | Línea base en ambiente natural **[P §2.9]** | Convenciones de línea base (sondas 1 h) | No se comprueba dónde se tomó |
-| 11 | Línea base y regla de revisión por meta **[V]** | Criterios vagos, punto 11 del prompt | Difuso; no se exige por meta |
-| 12 | Generalización y mantenimiento separados **[V]** | `SEC_GENERALIZATION` mezcla ambos | Un plan sin mantenimiento pasa |
-| 13 | Dosis justificada por metas/necesidad **[V]** | Matemática CPT y modificador HN | Verifica la aritmética, no la justificación |
-| 14 | Reevaluación con el mismo instrumento **[V]** | `SEC_PROGRESS_DATA` / `SEC_PROGRESS_NARRATIVE` | No exige re-administrar el mismo instrumento, que es lo que hace comparable el progreso |
+**Recomendación:** estrechar la exención a fechas de **servicio/autorización** y **volver a marcar** el TBD en campos de meta. Dos líneas de `classifyTbdContext` y los patrones `TBD_NEW_TARGET_CONTEXT`. No lo he tocado: es tu decisión clínica y tú conoces cómo lo reciben los revisores en la práctica. *Fuente: FL Medicaid §6.2.2, p. 7–8.* **[P]**
 
 ---
 
-## 5. Recomendaciones
+## 3. Florida Medicaid (vinculante) — requisitos literales **[P]**
 
-Ordenadas por valor/riesgo. Las **[P]** pueden citar su fuente con página; las **[V]** no deben citar sección hasta verificarse.
+### 3.1 Instrumentos estandarizados obligatorios — §4.2.1
 
-### Implementables ya, con cita verificable
+La evaluación inicial **debe** incluir administración, puntuación y reporte de **dos instrumentos núcleo**:
 
-**R1 — Fuente de la evidencia funcional (`FUNCTION_EVIDENCE_SOURCE`).** Por conducta, exigir que el documento nombre cómo se determinó la función. `warning` si no se nombra ningún método; `warning` elevado a `blocker` en conductas peligrosas si **solo** hay evidencia indirecta (FAST/MAS/entrevista) sin observación directa ni análisis funcional. El canónico ya extrae `functionSource`: la regla puede leerlo sin una pasada de IA nueva. *Cita: CASP/APBA 2026, cap. 3, p. 22.*
+- **Vineland-3 Comprehensive Parent Interview Form** — para **todos** los recipients, **más el Maladaptive Behavior Domain** para 3 años en adelante
+- **BASC-3 PRQ** (Parenting Relationship Questionnaire) — para edades de 2 a 18 años
 
-**R2 — Assent del cliente (`SEC_ASSENT`).** Sección requerida, separada de `SEC_CONSENT`. Palabras clave: assent, asentimiento, assent withdrawal, señales de disposición. *Cita: cap. 2, Key Points, p. 18.*
+> "The **complete scoring report, including outcome measure scores, must be submitted** with service prior authorization requests."
 
-**R3 — Dominios de evaluación (`SEC_ASSESSMENT_DOMAINS`).** Comprobar cobertura de los cuatro dominios. Los dos primeros suelen estar; **bienestar/calidad de vida** y **condiciones co-ocurrentes** casi nunca. `warning` por dominio ausente. *Cita: cap. 5, Key Points, p. 54.*
+Instrumentos adicionales quedan a discreción del Lead Analyst. **En reassessments, los instrumentos núcleo deben incluirse cada 12 meses.**
 
-**R4 — Fidelidad procedimental distinta del IOA (`PROCEDURAL_FIDELITY`).** Requisito propio junto al de IOA: instrumento (checklist paso a paso), criterio de adherencia, frecuencia y responsable. Redactar la regla de modo que **no** se dé por satisfecha con una mención de IOA. *Cita: cap. 4, p. 43.*
+> Hoy el auditor tiene "vineland" como una palabra clave dentro de una sección **opcional**. Esto es un requisito duro con consecuencia de denegación.
 
-**R5 — Metas que reproducen criterios diagnósticos (`GOALS_NOT_DSM_CRITERIA`).** Detectable por patrón: metas redactadas con lenguaje de criterio DSM. `warning` con nota de apoyo: reformular hacia resultados significativos para el cliente y su sistema de apoyo. *Cita: cap. 5, Key Points, p. 54.*
+### 3.2 Elementos requeridos del assessment y el behavior plan — §6.2.2
 
-**R6 — Vínculo evaluación → meta (`GOAL_ASSESSMENT_LINK`).** Cada meta debe poder trazarse a un hallazgo de la evaluación. Implementable sobre el canónico: metas que no referencian ningún instrumento ni hallazgo → `warning` agregado, no por meta (evitar ruido). *Cita: cap. 6, p. 59.*
+Debe estar **firmado por el Lead Analyst y por el padre o tutor**, e incluir:
 
-**R7 — Limitaciones del instrumento (`ASSESSMENT_LIMITATIONS`).** `notice`: cuando se nombra un instrumento estandarizado, el documento debería declarar sus limitaciones y la justificación clínica de su selección — sobre todo si lo exige el financiador y no captura bien las necesidades. *Cita: cap. 3, Key Points, p. 40; cap. 6, Key Points, p. 61.*
+Patient information · Reason for referral · **Medical and developmental history, incluyendo medicamentos prescritos para atenuar conductas** · Relevant family history · Clinical interview · **Review of recent assessments/reports (file review)** · Assessment procedures and results · Behavior plan · Treatment setting(s) · Proposed treatment targets/goals/objectives · **[los 9 elementos por meta de §2 arriba]** · Parent/guardian/caregiver training (con targets, **training procedures**, date of introduction, estimated date of mastery) · **Number of units requested** (por código de procedimiento **y la necesidad médica de las unidades solicitadas**) · **Supervision plan, incluyendo el nombre de los supervisores autorizados** · **Care coordination** con padres/cuidadores, escuelas, programas estatales de discapacidad · Transition (fading) plan · Crisis management plan · Discharge plan.
 
-**R8 — Barreras ambientales / SDOH (`ECOBEHAVIORAL_BARRIERS`).** `notice` de apoyo: el documento debería identificar barreras del entorno que puedan condicionar la viabilidad del plan (asistencia, transporte, estrés del cuidador, acceso). Encaja con el tono constructivo del auditor y es defendible ante Medicaid como individualización. *Cita: cap. 3, p. 38; Apéndice B, p. 78.*
+### 3.3 Reassessment — §6.2.3
 
-### Implementables, sin cita de sección hasta verificar
+Además de todo lo anterior:
 
-**R9 — Mantenimiento separado de generalización.** Partir `SEC_GENERALIZATION` en dos. Coste bajo, brecha clara.
+- **Datos de progreso de todas las conductas tratadas. "Each behavior under treatment must have its own data table and corresponding graph."**
+- **Narrativa de progreso + justificación de continuación al nivel de intensidad solicitado**
+- Si no hubo progreso clínicamente significativo en el período: **explicar por qué y qué cambios de tratamiento se harán**
 
-**R10 — Línea base por meta.** Cada LTO/STO con línea base, método de medición y criterio de dominio. `warning` por meta sin línea base.
+Frecuencia: reassessment y plan actualizado **al menos cada 6 meses**; instrumentos núcleo cada 12 meses. **Evaluaciones más frecuentes son obligatorias cuando** (a) emerge una conducta nueva que interfiere con una actividad vital mayor y (b) servicios adicionales son médicamente necesarios para abordarla. Un cambio de estatus del practicante (p. ej. RBT que se certifica como BCaBA) **no** es motivo para reassessment.
 
-**R11 — Justificación de la dosis.** Además de la aritmética CPT, señalar como **pregunta** cuando las horas no estén vinculadas a metas y necesidad. ⚠️ **No implementar los rangos 30–40 / 10–25 h hasta verificar CASP v3.0**: un falso positivo aquí es caro.
+### 3.4 Límites cuantitativos y de proveedor — §4.2.2
 
-**R12 — Re-administración del mismo instrumento en reassessment.** Para que el progreso sea comparable.
+- **Hasta 40 horas semanales** de servicios de intervención BA
+- **Grupo: máximo 6 participantes**
+- **Adaptive behavior treatment with protocol modification: solo Lead Analyst o BCaBA** (no RBT) — igual para la modalidad grupal
+- Family adaptive behavior treatment guidance: Lead Analyst o BCaBA
+- El Lead Analyst puede dar **hasta 2 h/semana** de entrenamiento a padres por telemedicina
+- **Autorización del QIO antes de iniciar y al menos cada 180 días**
 
-### Estructurales
+### 3.5 Participación de padres — §4.2.2 y §7.2
 
-**R13 — Tabla de requisitos con fuente.** Crear `{id, requisito, fuente, edición, capítulo/página, severidad, estado_verificación}` en el repositorio, y que los prompts trabajen contra ella. Las citas dejan de ser inventables, actualizar una norma es editar una fila, y el reporte puede mostrar la fuente exacta junto al hallazgo. El PDF de CASP/APBA ya permite llenar ~10 filas verificadas.
+> "The provider **must make every effort to accommodate parental participation and must document those efforts in treatment plan updates**. If parent or guardian participation is not possible, the treatment plan and session notes must document the reasons for non-participation. Documentation should also explain **potential impacts of non-participation and how potential impacts are being mitigated**."
 
-**R14 — Dejar de pedir números de sección no verificables.** Mientras R13 no exista, suavizar "cite the standard" para que el modelo cite **estándar y edición** (verificable) sin inventar el **número de sección**. Un número equivocado en un documento que va a Medicaid es peor que ningún número.
+Y: "Authorization requests for service continuation **must include data about parental guardian participation** in services."
+
+### 3.6 Servicios NO cubiertos — §5.2
+
+Auditable como bandera roja si aparecen en el plan:
+
+- **Cualquier procedimiento o técnica de manejo de crisis que implique reclusión o restricción manual, mecánica o química**
+- Supervisión del recipient, asistencia personal (1:1 aide), companion, chaperone o shadow, en cualquier actividad o entorno
+- Servicios de cuidador o guardería
+- **Psychological testing, neuropsychology, psychotherapy, cognitive therapy, sex therapy, psychoanalysis, hypnotherapy, long-term counseling**
+- Servicios el mismo día que behavioral health overlay / therapeutic behavioral on-site / therapeutic group care
+- Servicios simultáneos de más de un proveedor BA, salvo necesidad médica + autorización previa + constancia en el plan aprobado
+- **Travel time**
+
+### 3.7 Alta — §4.2.4
+
+Se considera el alta cuando: el recipient deja de ser elegible; deja de cumplir necesidad médica (Regla 59G-1.010); ya no presenta conductas maladaptativas; **los datos indican que la frecuencia y severidad o el nivel de deterioro funcional ya no es barrera** para funcionar en su ambiente; el deterioro funcional ya no justifica continuar; o **el padre o tutor retira el consentimiento**.
+
+### 3.8 Servicios en escuela — §7.2
+
+La solicitud debe incluir el **IEP**. Sin IEP, o si el IEP no contiene servicios BA: documentación que justifique los servicios **y un tiempo estimado de cuándo se completará o actualizará el IEP**. Si la escuela no hace IEP, sirve un plan 504; si no hace ninguno, documentación con el nombre de la escuela y la explicación.
 
 ---
 
-## 6. Qué falta conseguir
+## 4. CASP/APBA, ASD Assessment Guidelines (marzo 2026) — **[P]**
 
-Con el PDF de CASP/APBA el bloque **[P]** ya es sólido. Para cerrar el resto hacen falta tres PDF más:
+Vinculantes por incorporación (ver §1).
 
-1. **Florida Medicaid BA Services Coverage Policy, diciembre 2024** — la lista literal de elementos requeridos del BASP y los requisitos de reevaluación. Es la fuente con consecuencia económica directa; la que menos margen admite.
-2. **CASP ABA Practice Guidelines v3.0 (2024)** — rangos de dosis, necesidad médica, reevaluación con medidas estandarizadas (R11, R12).
-3. **BACB Ethics Code (edición vigente)** — números y títulos exactos de los estándares sobre evaluación, consentimiento y assent (R2, R14).
+**4.1 Evaluación multimodal.** "No single assessment tool or fixed set of instruments can provide all of the information needed" (consenso NASEM 2025; cap. 3, p. 22). Combina revisión de registros, entrevistas, observación directa, y evaluaciones formales e informales. La **revisión de registros** es de los primeros pasos, y la **evaluación diagnóstica** es un registro que el analista debe saber leer y priorizar.
+
+**4.2 La observación directa es primaria.** "Practitioners should prioritize the use of **direct observation and measurement—the heart of ABA**… **Indirect measures supplement direct measures**" (cap. 3, p. 22). Una función sostenida solo en un FAST o un MAS no cumple el estándar.
+
+**4.3 Cuatro dominios de evaluación** (cap. 5, Key Points, p. 54): (a) características nucleares del TEA — comunicación social y conductas restringidas; (b) conducta y funcionamiento adaptativo; (c) **bienestar y calidad de vida**; (d) **condiciones co-ocurrentes y características asociadas** — salud mental, discapacidad intelectual, trastornos del lenguaje.
+
+**4.4 Los criterios diagnósticos no son una lista de objetivos.** "It warns against **using diagnostic criteria as checklists for treatment targets** and instead promotes aligning interventions with outcomes meaningful to the client and their support system" (cap. 5, p. 54).
+
+**4.5 IOA y fidelidad procedimental son distintos, y se exigen ambos** (cap. 4). IOA evalúa fiabilidad del dato y detecta **deriva del observador** y definiciones que necesitan aclararse. La **fidelidad procedimental** — "just as practitioners measure the treatment fidelity of ABA-based services, they should also measure and evaluate the **procedural fidelity of assessment implementation**" — se mide con una lista paso a paso puntuada Sí/No que produce un **porcentaje de adherencia**, y sirve para (a) auto-monitoreo, (b) supervisión y competencia, (c) **validación de los datos**. Meta: adherencia total, "especialmente al usar herramientas estandarizadas, donde la fidelidad procedimental afecta directamente la validez de los resultados" (p. 43).
+
+**4.6 Consentimiento informado incluyendo assent del cliente.** "Informed consent, **including assent from the client being assessed**, must be obtained, with all stakeholders clearly understanding the purpose, procedures, and potential risks" (cap. 2, Key Points, p. 18).
+
+**4.7 Competencia y calificaciones.** Entrenamiento en administrar, puntuar e interpretar; respetar las calificaciones exigidas por el editor del instrumento y el alcance regulatorio de práctica.
+
+**4.8 Limitaciones documentadas.** "Clear documentation of **assessment limitations and clinical rationale** is essential" (cap. 3, p. 40). Caso explícito: cuando el financiador exige un instrumento que no captura bien las necesidades, hay que comunicar las limitaciones y justificar medidas alternativas. *(Nota: en Florida esto aplica directamente al Vineland-3/BASC-3 exigidos por §4.2.1.)*
+
+**4.9 Ambiente natural.** Las evaluaciones en entornos naturales, cuando es apropiado, dan "**a more accurate baseline**" y variables contextuales críticas (cap. 6, p. 61).
+
+**4.10 Análisis ecoconductual y SDOH.** Fortalezas y barreras ambientales; los determinantes sociales de la salud explican **30–55 %** de los resultados en salud (OMS). Ejemplo del propio documento: un niño con ausentismo escolar crónico no se beneficiará de intervención en centro salvo que se aborden las barreras de asistencia (cap. 3, p. 38; Apéndice B).
+
+**4.11 Vínculo evaluación → meta.** "A practitioner should **directly link the information gathered from the assessment to protocol design and the rationale for targeting specific behaviors**" (cap. 6, p. 59).
 
 ---
 
-## 7. Fuentes
+## 5. Literatura secundaria — **[V]**
 
-**Primaria, leída en esta sesión:**
+**El emparejamiento función ↔ intervención es el predictor de calidad.** En estudios de adecuación técnica de FBA/BIP escolares, los planes reales puntúan solo **40–50 %** de los componentes esperados, con asociaciones fuertes entre la calidad global y (a) la función identificada y (b) si las estrategias estaban emparejadas con ella. Instrumentos formales: TATE, lista de 11 ítems de Van Acker, instrumento de 31 indicadores en 8 dimensiones.
 
-- Council of Autism Service Providers & Association of Professional Behavior Analysts (2026). *Autism spectrum disorders assessment guidelines for behavior analysts.* 79 pp. — PDF aportado por Rolando.
+> **Esto valida el módulo más valioso del auditor.** `runFunctionalCoherenceAudit` ataca exactamente esa variable. Es el módulo a reforzar antes que cualquier otro.
 
-**Secundarias, vía búsqueda (no abiertas directamente):**
+**Fidelidad de tratamiento:** tres dimensiones que predicen resultados de forma diferenciada — adherencia, calidad y exposición.
+
+**Dosis (CASP v3.0):** rangos de referencia 30–40 h/sem comprehensivo, 10–25 h/sem focalizado. ⚠️ No verificado. *Nota: Florida Medicaid fija el techo duro en **40 h/sem** (§4.2.2, verificado).*
+
+---
+
+## 6. Brechas del auditor
+
+| # | Requisito | Fuente | Hoy | Brecha |
+|---|---|---|---|---|
+| 1 | Vineland-3 (+ Maladaptive Domain ≥3 a.) y BASC-3 PRQ (2–18 a.), con reporte de puntuaciones | FL §4.2.1 **[P]** | "vineland" como keyword en sección **opcional** | **Requisito duro tratado como opcional.** Causa de denegación |
+| 2 | 9 elementos por cada meta, incl. fecha de introducción y fecha estimada de dominio | FL §6.2.2 **[P]** | Criterios vagos (punto 11 del prompt) | **Ausente como lista verificable**; y la exención de TBD de hoy los exime justamente |
+| 3 | Tabla de datos **y gráfico** por cada conducta tratada | FL §6.2.3 **[P]** | `SEC_PROGRESS_DATA` busca 'graph' entre otras | No exige **una por conducta** |
+| 4 | Explicación obligatoria si no hubo progreso significativo | FL §6.2.3 **[P]** | — | **Ausente** |
+| 5 | Firma del Lead Analyst **y** del padre/tutor | FL §6.2.2 **[P]** | `SEC_CONSENT` genérico | No distingue las dos firmas |
+| 6 | Esfuerzos de participación parental documentados; impactos y mitigación si no participa | FL §4.2.2, §7.2 **[P]** | Parent training sí; esto no | **Ausente** |
+| 7 | Unidades por código **+ necesidad médica de las unidades** | FL §6.2.2 **[P]** | Matemática CPT correcta | Verifica aritmética, no la justificación |
+| 8 | Nombres de los supervisores autorizados | FL §6.2.2 **[P]** | `SEC_SUPERVISION` genérico | No exige nombres |
+| 9 | Care coordination con escuela/programas estatales | FL §6.2.2 **[P]** | — | **Ausente** |
+| 10 | Historia médica **con medicamentos para atenuar conductas** | FL §6.2.2 **[P]** | — | **Ausente** |
+| 11 | File review de evaluaciones recientes | FL §6.2.2 **[P]**, CASP cap. 3 | — | **Ausente** |
+| 12 | Reclusión/restricción, 1:1 aide, psicoterapia, travel time = no cubiertos | FL §5.2 **[P]** | Lista de intervenciones prohibidas clínicas | **No cubre los no-cubiertos de Medicaid** |
+| 13 | Máx. 40 h/sem; grupo máx. 6; protocol modification solo Lead/BCaBA | FL §4.2.2 **[P]** | Modificador HN | Parcial |
+| 14 | IEP (o 504, o justificación) en servicios escolares | FL §7.2 **[P]** | — | **Ausente** |
+| 15 | Función sostenida en medición directa | CASP 4.2 **[P]** | Keywords; "verificar FAST/MAS" solo si fue inferida | **No exige método ni convergencia** |
+| 16 | Cuatro dominios de evaluación | CASP 4.3 **[P]** | `SEC_STRENGTHS` opcional | **Ausente**; calidad de vida y co-ocurrentes nunca se comprueban |
+| 17 | Metas ≠ criterios diagnósticos | CASP 4.4 **[P]** | — | **Ausente** |
+| 18 | Fidelidad procedimental distinta del IOA | CASP 4.5 **[P]** | Solo IOA, solo con 97155 | **Ausente** y conceptos confundidos |
+| 19 | Assent del cliente | CASP 4.6 **[P]** | Firma del guardián | **Ausente** |
+| 20 | Limitaciones del instrumento documentadas | CASP 4.8 **[P]** | — | **Ausente** |
+| 21 | Barreras ambientales / SDOH | CASP 4.10 **[P]** | — | **Ausente** |
+| 22 | Vínculo explícito evaluación → meta | CASP 4.11 **[P]** | — | **Ausente** |
+| 23 | Emparejamiento función ↔ reemplazo ↔ intervención | Literatura **[V]** | `runFunctionalCoherenceAudit` | Cubierto; el módulo más fuerte |
+
+---
+
+## 7. Recomendaciones, por prioridad
+
+### Bloque A — riesgo de denegación de reclamación (hacer primero)
+
+Todas citan Florida Medicaid, texto verificado.
+
+**R1 — Instrumentos núcleo obligatorios (`FL_CORE_INSTRUMENTS`).** `blocker` si falta Vineland-3 en un assessment inicial; `blocker` si falta el Maladaptive Behavior Domain con edad ≥3; `blocker` si falta BASC-3 PRQ con edad 2–18. La edad ya está en el perfil del cliente, así que la regla puede ser determinista. `warning` si se nombran pero no hay reporte de puntuaciones. En reassessment: `warning` si han pasado ≥12 meses sin los instrumentos núcleo. *§4.2.1.*
+
+**R2 — Lista de 9 elementos por meta (`FL_GOAL_ELEMENTS`).** Sobre el canónico, comprobar por meta: definición observable, procedimientos de observación y medición directa, línea base, procedimientos de reducción/adquisición, condiciones y criterio de dominio, **fecha de introducción**, **fecha estimada de dominio**, plan de generalización, reporte de progreso. Agregado por elemento faltante (no una tarjeta por meta) para no inundar. *§6.2.2.*
+
+**R3 — Revisar la exención de TBD.** Ver §2. Estrechar a fechas de servicio/autorización.
+
+**R4 — Tabla y gráfico por conducta en reassessment (`FL_DATA_PER_BEHAVIOR`).** `blocker`: cada conducta tratada necesita su propia tabla **y** su gráfico. *§6.2.3.*
+
+**R5 — Explicación de falta de progreso (`FL_NO_PROGRESS_EXPLANATION`).** Si el reassessment no evidencia progreso significativo, debe explicar por qué y qué cambia. *§6.2.3.*
+
+**R6 — Servicios no cubiertos (`FL_NON_COVERED`).** Añadir a las reglas deterministas: reclusión y restricción manual/mecánica/química, 1:1 aide / shadow / companion, psicoterapia y testing psicológico, travel time, servicios simultáneos sin autorización. `blocker`. *§5.2.* **Nota clínica:** esto se solapa parcialmente con la lista de intervenciones prohibidas que ya existe, pero el fundamento es distinto — allí es "no es ABA", aquí es "Medicaid no lo paga". Conviene que el hallazgo lo diga.
+
+**R7 — Participación parental documentada (`FL_PARENT_PARTICIPATION`).** Esfuerzos documentados; si no participa, razones + impactos + mitigación; y en continuación, datos de participación. *§4.2.2, §7.2.*
+
+**R8 — Elementos administrativos faltantes.** Firmas (Lead Analyst **y** tutor), nombres de supervisores, care coordination, historia médica con medicamentos, file review, número de unidades por código con su necesidad médica, IEP/504 en servicios escolares. Un bloque de completitud, severidad `warning`, agregado. *§6.2.2, §7.2.*
+
+**R9 — Techos duros.** >40 h/sem, grupo >6, protocol modification atribuido a RBT. `blocker`. *§4.2.2.*
+
+### Bloque B — calidad clínica, con cita verificable
+
+**R10 — Fuente de la evidencia funcional (`FUNCTION_EVIDENCE_SOURCE`).** Exigir que se nombre el método; `blocker` en conductas peligrosas si solo hay evidencia indirecta. El canónico ya extrae `functionSource`. *CASP cap. 3, p. 22.*
+
+**R11 — Fidelidad procedimental distinta del IOA (`PROCEDURAL_FIDELITY`).** Requisito propio; que no se dé por satisfecho con una mención de IOA. *CASP cap. 4, p. 43.*
+
+**R12 — Cuatro dominios de evaluación (`SEC_ASSESSMENT_DOMAINS`).** Los dos primeros suelen estar; calidad de vida y condiciones co-ocurrentes casi nunca. *CASP cap. 5, p. 54.*
+
+**R13 — Assent del cliente (`SEC_ASSENT`).** Separado del consentimiento del tutor. *CASP cap. 2, p. 18.*
+
+**R14 — Metas que reproducen criterios diagnósticos (`GOALS_NOT_DSM_CRITERIA`).** *CASP cap. 5, p. 54.*
+
+**R15 — Vínculo evaluación → meta (`GOAL_ASSESSMENT_LINK`).** *CASP cap. 6, p. 59.*
+
+**R16 — Limitaciones del instrumento (`ASSESSMENT_LIMITATIONS`).** Especialmente pertinente en Florida, donde el financiador impone Vineland-3 y BASC-3. *CASP cap. 3, p. 40.*
+
+**R17 — Barreras ambientales / SDOH (`ECOBEHAVIORAL_BARRIERS`).** `notice` de apoyo. *CASP cap. 3, p. 38; Apéndice B.*
+
+### Bloque C — estructural
+
+**R18 — Tabla de requisitos con fuente.** `{id, requisito, fuente, edición, sección/página, severidad, estado_verificación}` en el repositorio; los prompts trabajan contra ella. Con los dos PDF leídos ya se pueden llenar ~35 filas verificadas. Las citas dejan de ser inventables y actualizar una norma es editar una fila.
+
+**R19 — Dejar de pedir números de sección no verificables.** Mientras R18 no exista, que el modelo cite **estándar y edición** sin inventar el **número de sección**.
+
+---
+
+## 8. Qué falta conseguir
+
+Con los dos PDF aportados, el bloque vinculante está cubierto. Quedan:
+
+1. **CASP ABA Practice Guidelines v3.0 (2024)** — vinculante por incorporación (§4.2 de FL Medicaid), y es la fuente de los rangos de dosis y de las razones de supervisión. **Es ahora la más importante de las que faltan.**
+2. **BACB Ethics Code (edición vigente)** — números y títulos exactos para R13 y R19.
+
+---
+
+## 9. Fuentes
+
+**Primarias, leídas en esta sesión:**
+
+- Florida Agency for Health Care Administration (diciembre 2024). *Florida Medicaid Behavior Analysis Services Coverage Policy.* 12 pp. Incorporada por referencia en la Regla 59G-4.125, F.A.C.
+- Council of Autism Service Providers & Association of Professional Behavior Analysts (2026). *Autism spectrum disorders assessment guidelines for behavior analysts.* 79 pp.
+
+**Secundarias, vía búsqueda:**
 
 - CASP — [ABA Practice Guidelines (Version 3.0)](https://www.casproviders.org/asd-guidelines/) · [nota de lanzamiento](https://www.casproviders.org/news/council-of-autism-service-providers-releases-new-practice-guidelines-for-treating-autism)
 - Behavioral Health Business — [CASP Revises Practice Guidelines for ABA in Autism Therapy](https://bhbusiness.com/2024/05/22/casp-revises-practice-guidelines-for-aba-in-autism-therapy/)
-- CASP/APBA — [Assessment Guidelines](https://www.casproviders.org/assessment-guidelines) · [ASD Assessment Repository](https://www.casproviders.org/asd-assessment-guidelines-and-repository)
-- NCBI Bookshelf — [ABA Industry Guidelines and Standards of Care (Comprehensive Autism Care Demonstration)](https://www.ncbi.nlm.nih.gov/books/NBK619293/)
-- AHCA Florida — [Behavior Analysis Services Coverage Policy](https://ahca.myflorida.com/medicaid/review/Specific/59G-4.125_BA_Services_Coverage_Policy.pdf) · Cornell LII — [Fla. Admin. Code r. 59G-4.125](https://www.law.cornell.edu/regulations/florida/Fla-Admin-Code-r-59G-4-125)
+- NCBI Bookshelf — [ABA Industry Guidelines and Standards of Care](https://www.ncbi.nlm.nih.gov/books/NBK619293/)
 - BACB — [Ethics Code for Behavior Analysts](https://www.bacb.com/wp-content/uploads/2022/01/Ethics-Code-for-Behavior-Analysts-240830-a.pdf)
 - MDPI *Behavioral Sciences* — [Are We on Course Yet? FBA and BIP Technical Adequacy in Schools](https://www.mdpi.com/2076-328X/14/6/466) ([PMC](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC11200863/))
-- *Educational and Psychological Sciences Series* — [Quality indicators in behavior-intervention plans (31 indicadores, 8 dimensiones)](https://journals.aabu.edu.jo/index.php/Edu/article/view/1533)
-- PMC — [Functional Assessment of Problem Behavior: Dispelling Myths, Overcoming Implementation Obstacles, and Developing New Lore](https://pmc.ncbi.nlm.nih.gov/articles/PMC3546636/)
+- *Educational and Psychological Sciences Series* — [Quality indicators in behavior-intervention plans](https://journals.aabu.edu.jo/index.php/Edu/article/view/1533)
+- PMC — [Functional Assessment of Problem Behavior: Dispelling Myths…](https://pmc.ncbi.nlm.nih.gov/articles/PMC3546636/)
 - ASAT — [Comparisons of FBA Procedures to the Functional Analysis of Problem Behavior](https://asatonline.org/research-treatment/research-synopses/comparisons-of-functional-behavior-assessment/)
-- PMC — [Ensuring Treatment Fidelity in a Multi-site Behavioral Intervention Study (NIH BCC)](https://pmc.ncbi.nlm.nih.gov/articles/PMC3198011/)
+- PMC — [Ensuring Treatment Fidelity in a Multi-site Behavioral Intervention Study](https://pmc.ncbi.nlm.nih.gov/articles/PMC3198011/)
 - ERIC — [Assessing Treatment Integrity in Behavioral Consultation](https://files.eric.ed.gov/fulltext/EJ801232.pdf)
-- Finni Health — [Writing Measurable ABA Goals: quality checklist](https://www.finnihealth.com/resources/clinicians/writing-measurable-aba-goals-examples-common-mistakes-and-a-quality-checklist)
