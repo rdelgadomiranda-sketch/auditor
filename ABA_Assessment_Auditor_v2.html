@@ -1798,6 +1798,15 @@ async function runAudit(){
         }
       }
 
+      // FL Medicaid 6.2.3 (solo reassessment): una tabla y un grafico por
+      // conducta. Necesita el canonico para saber cuantas conductas hay, por
+      // eso corre despues de la extraccion.
+      try{
+        findings=findings.concat(await scanProgressDataPerBehavior(state.currentDoc,state.currentDoc.canonical));
+      }catch(err){
+        console.warn('Progress-data-per-behavior check failed:',err);
+      }
+
       const docSizeKB=Math.round(state.currentDoc.text.length/1024);
       setProg(82,`Running deep clinical & regulatory audit on full document (${docSizeKB} KB)... this can take 20-60 seconds`);
       try{
@@ -2471,6 +2480,97 @@ function scanCoreInstruments(text,docType,client){
     add('FL_CORE_SCORING_REPORT','warning',
       'Se nombran instrumentos estandarizados pero no se detectan puntuaciones reportadas. La secci\u00f3n 4.2.1 exige que el reporte completo de puntuaci\u00f3n, incluidas las outcome measure scores, se presente con la solicitud de autorizaci\u00f3n.',
       'Include the complete scoring report with outcome measure scores (standard scores, percentiles, composites) for each core instrument, as required by Florida Medicaid Coverage Policy Section 4.2.1 for prior authorization requests.');
+  }
+  return findings;
+}
+
+// FL Medicaid 6.2.3, reassessment: "Each behavior under treatment must have
+// its own data table and corresponding graph."
+//
+// Los graficos son OBJETOS EMBEBIDOS: no aparecen en el texto extraido, asi
+// que ningun regex sobre docObj.text puede verlos. Buscar la palabra "graph"
+// solo encuentra menciones, no graficos. Esta regla inspecciona el .docx
+// original guardado en IndexedDB y cuenta estructura real del paquete OOXML:
+// elementos <w:tbl> en document.xml, partes word/charts/chartN.xml y archivos
+// en word/media/.
+//
+// Principio de la regla: el DEFICIT es demostrable, la SUFICIENCIA no.
+// Los conteos SOBREestiman lo que exige la norma (un <w:tbl> puede ser el
+// horario de servicios, una imagen puede ser el logo del membrete), nunca lo
+// subestiman. Por eso "hay menos objetos que conductas" implica con certeza
+// que alguna conducta no tiene su tabla o su grafico, y es blocker; mientras
+// que "hay suficientes objetos" NO prueba cumplimiento, y no se afirma.
+async function scanProgressDataPerBehavior(docObj,canonical){
+  const findings=[];
+  if(!docObj||docObj.docType!=='reassessment')return findings;
+  const names=(canonical&&Array.isArray(canonical.behaviors)?canonical.behaviors:[])
+    .map(b=>b&&b.name).filter(Boolean);
+  const n=names.length;
+  const add=(ruleId,severity,description,suggestedAction)=>findings.push({
+    id:uid(),ruleId,severity,category:'florida_medicaid',description,suggestedAction,
+    status:'open',createdAt:Date.now()
+  });
+  const listed=n?` Conductas detectadas en el documento (${n}): ${names.join(', ')}.`:'';
+  const ACTION='Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 6.2.3, the reassessment must include data reflecting progress of all behaviors targeted for improvement, and each behavior under treatment must have its OWN data table and a corresponding graph. Add the missing table and graph for every targeted behavior before submitting for reauthorization.';
+
+  let tables=null,charts=0,images=0,inspected=false;
+  if(docObj.format==='DOCX'&&docObj.hasOriginal){
+    try{
+      const blob=await IDB.get('orig_'+docObj.id);
+      if(blob){
+        await loadJSZip();
+        const zip=await JSZip.loadAsync(await blob.arrayBuffer());
+        const docXml=zip.file('word/document.xml');
+        if(docXml){
+          const xml=await docXml.async('string');
+          // <w:tbl> o <w:tbl ...>, nunca <w:tblPr>/<w:tblGrid>
+          tables=(xml.match(/<w:tbl[\s>]/g)||[]).length;
+        }
+        const keys=Object.keys(zip.files);
+        charts=keys.filter(k=>/^word\/charts\/chart[^/]*\.xml$/i.test(k)).length;
+        images=keys.filter(k=>/^word\/media\/[^/]+$/i.test(k)).length;
+        inspected=tables!==null;
+      }
+    }catch(err){
+      console.warn('[Auditor] No se pudo inspeccionar el .docx para la regla de tabla+grafico por conducta:',err);
+    }
+  }
+
+  if(!inspected){
+    // PDF, o .docx subido antes de que se guardara el binario: no hay forma de
+    // contar objetos. Se pide verificacion manual en vez de callar.
+    if(n){
+      add('FL_DATA_PER_BEHAVIOR_MANUAL','warning',
+        `No se pudo verificar automaticamente si cada conducta tiene su propia tabla de datos y su grafico: los graficos son objetos embebidos y este documento ${docObj.format==='DOCX'?'no conserva su archivo original':'es un PDF'}. La seccion 6.2.3 lo exige por cada conducta bajo tratamiento.${listed} Revise manualmente.`,
+        ACTION);
+    }
+    return findings;
+  }
+
+  const graphObjects=charts+images;
+  const evidencia=`Objetos hallados en el archivo: ${tables} tabla${tables===1?'':'s'}, ${charts} grafico${charts===1?'':'s'} de Word y ${images} imagen${images===1?'':'es'} embebida${images===1?'':'s'}.`;
+
+  if(graphObjects===0){
+    add('FL_DATA_PER_BEHAVIOR_GRAPHS','blocker',
+      `El documento no contiene ningun grafico ni imagen embebida, de modo que ninguna conducta tiene el grafico que exige la seccion 6.2.3 del Florida Medicaid BA Services Coverage Policy para los reassessments.${listed} ${evidencia}`,
+      ACTION);
+  }else if(n&&graphObjects<n){
+    // Los objetos graficos SOBREestiman los graficos reales (el logo del
+    // membrete cuenta), asi que este deficit es concluyente.
+    add('FL_DATA_PER_BEHAVIOR_GRAPHS','blocker',
+      `Hay menos graficos e imagenes en el archivo (${graphObjects}) que conductas bajo tratamiento (${n}), asi que al menos ${n-graphObjects} conducta${n-graphObjects===1?'':'s'} no tiene su grafico. La seccion 6.2.3 exige uno por cada conducta. El conteo incluye logos y adornos, por lo que el deficit real puede ser mayor.${listed} ${evidencia}`,
+      ACTION);
+  }
+
+  if(tables===0){
+    add('FL_DATA_PER_BEHAVIOR_TABLES','blocker',
+      `El documento no contiene ninguna tabla, de modo que ninguna conducta tiene la tabla de datos propia que exige la seccion 6.2.3 para los reassessments.${listed} ${evidencia}`,
+      ACTION);
+  }else if(n&&tables<n){
+    // Igual que arriba: el conteo incluye tablas de horario, CPT y firmas.
+    add('FL_DATA_PER_BEHAVIOR_TABLES','blocker',
+      `Hay menos tablas en el archivo (${tables}) que conductas bajo tratamiento (${n}), asi que al menos ${n-tables} conducta${n-tables===1?'':'s'} no tiene su tabla de datos propia. La seccion 6.2.3 exige una por cada conducta. El conteo incluye tablas de horario de servicios, unidades CPT y firmas, por lo que el deficit real puede ser mayor.${listed} ${evidencia}`,
+      ACTION);
   }
   return findings;
 }

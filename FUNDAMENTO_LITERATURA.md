@@ -206,7 +206,7 @@ Todas citan Florida Medicaid, texto verificado.
 
 **R3 — Revisar la exención de TBD.** Ver §2. Estrechar a fechas de servicio/autorización.
 
-**R4 — Tabla y gráfico por conducta en reassessment (`FL_DATA_PER_BEHAVIOR`).** `blocker`: cada conducta tratada necesita su propia tabla **y** su gráfico. *§6.2.3.*
+**R4 — Tabla y gráfico por conducta en reassessment (`FL_DATA_PER_BEHAVIOR`). ✅ IMPLEMENTADO** como `scanProgressDataPerBehavior`, por inspección del .docx original. `blocker`: cada conducta tratada necesita su propia tabla **y** su gráfico. *§6.2.3.*
 
 **R5 — Explicación de falta de progreso (`FL_NO_PROGRESS_EXPLANATION`).** Si el reassessment no evidencia progreso significativo, debe explicar por qué y qué cambia. *§6.2.3.*
 
