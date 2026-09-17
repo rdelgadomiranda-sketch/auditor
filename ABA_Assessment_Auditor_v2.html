@@ -754,6 +754,69 @@ function classifyTbdContext(text,index,matchLen){
 }
 
 /* ── Clinical Safety Rules ─────────────────────────────── */
+/* Instrumentos nucleo obligatorios - FL Medicaid 4.2.1 -------------------
+   La Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre
+   2024, seccion 4.2.1) exige que la evaluacion inicial incluya la
+   administracion, puntuacion y reporte de DOS instrumentos estandarizados
+   nucleo:
+     - Vineland-3 Comprehensive Parent Interview Form: para TODOS los
+       recipients, mas el Maladaptive Behavior Domain desde los 3 anos.
+     - BASC-3 PRQ (Parenting Relationship Questionnaire): de 2 a 18 anos.
+   "The complete scoring report, including outcome measure scores, must be
+   submitted with service prior authorization requests."
+   En reassessments, los instrumentos nucleo deben incluirse cada 12 meses.
+   Faltarlos es causa directa de denegacion, no una observacion de estilo. */
+const FL_CORE_INSTRUMENT_PATTERNS={
+  vineland:/vineland/i,
+  vinelandEd3:/vineland[\s\u2011-]*(?:3\b|iii\b|third)/i,
+  vinelandOldEd:/vineland[\s\u2011-]*(?:ii\b|2\b|second)/i,
+  vinelandForm:/comprehensive\s+(?:parent|caregiver)\s+(?:interview\s+)?form|comprehensive\s+interview\s+form/i,
+  maladaptiveDomain:/maladaptive\s+behavior\s+(?:domain|index|scale|composite)/i,
+  basc:/\bbasc\b|behavior\s+assessment\s+system\s+for\s+children/i,
+  prq:/\bprq\b|parenting\s+relationship\s+questionnaire/i,
+  scores:/\b(?:standard|scaled|composite|raw|v[\s\u2011-]?scale)\s+scores?\b|percentile|outcome\s+measure\s+scores?|adaptive\s+behavior\s+composite|scor(?:e|ing)\s+report|puntuaci\u00f3n\s+est\u00e1ndar|percentil/i
+};
+
+// Edad en anos (puede ser fraccionaria). Prioriza el perfil del cliente; si
+// no la tiene, la busca en el encabezado del documento con patrones
+// especificos ("7-year-old", "age: 7"), nunca un numero suelto.
+function parseAgeString(str){
+  if(!str)return null;
+  const s=String(str);
+  const months=s.match(/(\d{1,3})\s*(?:months?|meses|mos?\b)/i);
+  const years=s.match(/(\d{1,2})\s*(?:years?|yrs?\b|y\/o|a\u00f1os?)/i);
+  if(years)return parseInt(years[1],10)+(months?parseInt(months[1],10)/12:0);
+  if(months)return parseInt(months[1],10)/12;
+  const bare=s.match(/^\s*(\d{1,2})\s*$/);
+  return bare?parseInt(bare[1],10):null;
+}
+
+function resolveAgeYears(client,text){
+  // El perfil del cliente manda: lo escribio el analista.
+  const fromProfile=parseAgeString(client&&client.age);
+  if(fromProfile!==null)return fromProfile;
+  // Respaldo desde el documento usando SOLO los patrones de edad actual de
+  // scanAgeConsistency. Los patrones sueltos ("age X", "X-year-old") capturan
+  // edades de hermanos y de hitos del desarrollo, no la del cliente.
+  const ages={};
+  const patterns=[
+    /\bis\s+(?:a\s+|an\s+)?(\d{1,2})[\s-]?years?[\s-]?old\b/gi,
+    /\b(\d{1,2})[\s-]?year[\s-]?old\s+(?:male|female|child|client|student|patient)\b/gi,
+    /\b(?:tiene|de)\s+(\d{1,2})\s+a\u00f1os\b/gi
+  ];
+  for(const re of patterns){
+    let m;
+    while((m=re.exec(text||''))!==null){
+      const a=parseInt(m[1],10);
+      if(a>=1&&a<=21)ages[a]=(ages[a]||0)+1;
+    }
+  }
+  const distinct=Object.keys(ages).map(Number);
+  // Si el documento se contradice sobre la edad, no elegimos bando: queda
+  // desconocida y scanAgeConsistency reporta la contradiccion por su cuenta.
+  return distinct.length===1?distinct[0]:null;
+}
+
 const DANGEROUS_BEHAVIORS = [
   'physical aggression','aggression','hitting','kicking','biting','scratching','pushing',
   'self-injurious','self-injury','sib','head banging','head-banging','self-hitting',
@@ -1697,6 +1760,10 @@ async function runAudit(){
     setProg(75,'Checking regulatory section completeness...');
     await sleep(80);
     findings=findings.concat(scanCompleteness(text,state.currentDoc.docType));
+
+    setProg(78,'Verificando instrumentos n\u00facleo exigidos por Florida Medicaid...');
+    await sleep(80);
+    findings=findings.concat(scanCoreInstruments(text,state.currentDoc.docType,state.clients.find(c=>c.id===state.activeClientId)));
     findings=findings.concat(scanAgeConsistency(text));
     findings=findings.concat(scanCommunicationCongruence(text));
     findings=findings.concat(scanSTOIntegrity(text));
@@ -2329,6 +2396,81 @@ function scanCompleteness(text,docType){
         createdAt:Date.now()
       });
     }
+  }
+  return findings;
+}
+
+// FL Medicaid 4.2.1: instrumentos nucleo. En la evaluacion inicial su ausencia
+// es blocker (deniega la autorizacion); en un reassessment es warning, porque
+// el ciclo de 12 meses puede no haberse cumplido y el auditor no puede saber
+// cuando se administraron por ultima vez.
+function scanCoreInstruments(text,docType,client){
+  const findings=[];
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+  const P=FL_CORE_INSTRUMENT_PATTERNS;
+  const isReassess=docType==='reassessment';
+  const sev=isReassess?'warning':'blocker';
+  const cycle=isReassess?' En un reassessment deben incluirse al menos cada 12 meses: confirme cuando se administraron por ultima vez.':'';
+  const add=(ruleId,severity,description,suggestedAction)=>findings.push({
+    id:uid(),ruleId,severity,category:'florida_medicaid',description,suggestedAction,
+    status:'open',createdAt:Date.now()
+  });
+
+  const hasVineland=P.vineland.test(text);
+  const hasBasc=P.basc.test(text);
+  const hasPrq=P.prq.test(text);
+  const age=resolveAgeYears(client,text);
+  const unknownAge=age===null;
+  const ageTxt=unknownAge?'':` (edad: ${Math.round(age*10)/10} a\u00f1os)`;
+
+  // 1. Vineland-3: exigido para TODOS los recipients, sin umbral de edad.
+  if(!hasVineland){
+    add('FL_CORE_VINELAND',sev,
+      `No se detecta el Vineland-3. La Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024, secci\u00f3n 4.2.1) lo exige para TODOS los recipients, en su Comprehensive Parent Interview Form, con administraci\u00f3n, puntuaci\u00f3n y reporte.${cycle}`,
+      'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 4.2.1, administer and report the Vineland-3 Comprehensive Parent Interview Form. The complete scoring report, including outcome measure scores, must be submitted with the prior authorization request.');
+  }else{
+    if(P.vinelandOldEd.test(text)&&!P.vinelandEd3.test(text)){
+      add('FL_CORE_VINELAND_EDITION','warning',
+        'Se menciona el Vineland en una edici\u00f3n anterior a la tercera. La secci\u00f3n 4.2.1 exige espec\u00edficamente el Vineland-3.',
+        'Per Florida Medicaid Coverage Policy Section 4.2.1, the required instrument is the Vineland-3. Confirm the edition administered and update the report.');
+    }
+    if(!P.vinelandForm.test(text)){
+      add('FL_CORE_VINELAND_FORM','warning',
+        'Se menciona el Vineland pero no se identifica el formulario administrado. La secci\u00f3n 4.2.1 exige el Comprehensive Parent Interview Form en concreto, no cualquier formulario del instrumento.',
+        'Name the specific Vineland-3 form administered. Florida Medicaid Coverage Policy Section 4.2.1 requires the Comprehensive Parent Interview Form.');
+    }
+    // 2. Maladaptive Behavior Domain: exigido desde los 3 anos.
+    if(!P.maladaptiveDomain.test(text)){
+      if(unknownAge){
+        add('FL_CORE_MALADAPTIVE_DOMAIN','warning',
+          'No se detecta el Maladaptive Behavior Domain del Vineland-3, y no se pudo determinar la edad del cliente para saber si es exigible. La secci\u00f3n 4.2.1 lo exige desde los 3 a\u00f1os.',
+          'Confirm the client\u2019s age. If the client is 3 years or older, Florida Medicaid Coverage Policy Section 4.2.1 requires the Vineland-3 Maladaptive Behavior Domain in addition to the Comprehensive Parent Interview Form.');
+      }else if(age>=3){
+        add('FL_CORE_MALADAPTIVE_DOMAIN',sev,
+          `No se detecta el Maladaptive Behavior Domain del Vineland-3${ageTxt}. La secci\u00f3n 4.2.1 lo exige para recipients de 3 a\u00f1os en adelante, adem\u00e1s del Comprehensive Parent Interview Form.${cycle}`,
+          'Per Florida Medicaid Coverage Policy Section 4.2.1, administer and report the Vineland-3 Maladaptive Behavior Domain for recipients ages 3 years and older.');
+      }
+    }
+  }
+
+  // 3. BASC-3 PRQ: exigido de 2 a 18 anos.
+  if((unknownAge||(age>=2&&age<=18))&&!hasPrq){
+    if(!hasBasc){
+      add('FL_CORE_BASC_PRQ',unknownAge?'warning':sev,
+        `No se detecta el BASC-3 PRQ (Parenting Relationship Questionnaire)${ageTxt}. La secci\u00f3n 4.2.1 lo exige para recipients de 2 a 18 a\u00f1os.${unknownAge?' No se pudo determinar la edad del cliente: confirme si es exigible.':''}${cycle}`,
+        'Per Florida Medicaid Coverage Policy Section 4.2.1, administer and report the BASC-3 Parenting Relationship Questionnaire (PRQ) for recipients ages 2 through 18 years, and submit the complete scoring report with the authorization request.');
+    }else{
+      add('FL_CORE_BASC_PRQ_FORM','warning',
+        'Se menciona el BASC-3 pero no el PRQ. La secci\u00f3n 4.2.1 exige el Parenting Relationship Questionnaire en concreto; otras escalas del BASC-3 (TRS, PRS, SRP) no lo sustituyen.',
+        'Name the BASC-3 PRQ (Parenting Relationship Questionnaire) specifically. Per Florida Medicaid Coverage Policy Section 4.2.1, other BASC-3 forms do not satisfy this requirement.');
+    }
+  }
+
+  // 4. Reporte de puntuaciones: exigido con la solicitud de autorizacion.
+  if((hasVineland||hasBasc)&&!P.scores.test(text)){
+    add('FL_CORE_SCORING_REPORT','warning',
+      'Se nombran instrumentos estandarizados pero no se detectan puntuaciones reportadas. La secci\u00f3n 4.2.1 exige que el reporte completo de puntuaci\u00f3n, incluidas las outcome measure scores, se presente con la solicitud de autorizaci\u00f3n.',
+      'Include the complete scoring report with outcome measure scores (standard scores, percentiles, composites) for each core instrument, as required by Florida Medicaid Coverage Policy Section 4.2.1 for prior authorization requests.');
   }
   return findings;
 }

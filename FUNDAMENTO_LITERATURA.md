@@ -200,7 +200,7 @@ Vinculantes por incorporación (ver §1).
 
 Todas citan Florida Medicaid, texto verificado.
 
-**R1 — Instrumentos núcleo obligatorios (`FL_CORE_INSTRUMENTS`).** `blocker` si falta Vineland-3 en un assessment inicial; `blocker` si falta el Maladaptive Behavior Domain con edad ≥3; `blocker` si falta BASC-3 PRQ con edad 2–18. La edad ya está en el perfil del cliente, así que la regla puede ser determinista. `warning` si se nombran pero no hay reporte de puntuaciones. En reassessment: `warning` si han pasado ≥12 meses sin los instrumentos núcleo. *§4.2.1.*
+**R1 — Instrumentos núcleo obligatorios (`FL_CORE_INSTRUMENTS`). ✅ IMPLEMENTADO** como `scanCoreInstruments`. `blocker` si falta Vineland-3 en un assessment inicial; `blocker` si falta el Maladaptive Behavior Domain con edad ≥3; `blocker` si falta BASC-3 PRQ con edad 2–18. La edad ya está en el perfil del cliente, así que la regla puede ser determinista. `warning` si se nombran pero no hay reporte de puntuaciones. En reassessment: `warning` si han pasado ≥12 meses sin los instrumentos núcleo. *§4.2.1.*
 
 **R2 — Lista de 9 elementos por meta (`FL_GOAL_ELEMENTS`).** Sobre el canónico, comprobar por meta: definición observable, procedimientos de observación y medición directa, línea base, procedimientos de reducción/adquisición, condiciones y criterio de dominio, **fecha de introducción**, **fecha estimada de dominio**, plan de generalización, reporte de progreso. Agregado por elemento faltante (no una tarjeta por meta) para no inundar. *§6.2.2.*
 
