@@ -228,7 +228,7 @@ Todas citan Florida Medicaid, texto verificado.
 
 **R13 — Assent del cliente (`SEC_ASSENT`).** Separado del consentimiento del tutor. *CASP cap. 2, p. 18.*
 
-**R14 — Metas que reproducen criterios diagnósticos (`GOALS_NOT_DSM_CRITERIA`).** *CASP cap. 5, p. 54.*
+**R14 — Metas que reproducen criterios diagnósticos (`GOALS_NOT_DSM_CRITERIA`). ✅ IMPLEMENTADO** como `scanGoalsNotDsmCriteria`. *CASP cap. 5, p. 54.*
 
 **R15 — Vínculo evaluación → meta (`GOAL_ASSESSMENT_LINK`).** *CASP cap. 6, p. 59.*
 

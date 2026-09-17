@@ -1777,6 +1777,7 @@ async function runAudit(){
     findings=findings.concat(scanAdminRequiredElements(text,state.currentDoc.docType));
     findings=findings.concat(scanProceduralFidelity(text,state.currentDoc.docType));
     findings=findings.concat(scanAssessmentDomains(text,state.currentDoc.docType));
+    findings=findings.concat(scanGoalsNotDsmCriteria(text,state.currentDoc.docType));
     findings=findings.concat(scanAgeConsistency(text));
     findings=findings.concat(scanCommunicationCongruence(text));
     findings=findings.concat(scanSTOIntegrity(text));
@@ -2510,6 +2511,94 @@ function scanCoreInstruments(text,docType,client){
       'Se nombran instrumentos estandarizados pero no se detectan puntuaciones reportadas. La secci\u00f3n 4.2.1 exige que el reporte completo de puntuaci\u00f3n, incluidas las outcome measure scores, se presente con la solicitud de autorizaci\u00f3n.',
       'Include the complete scoring report with outcome measure scores (standard scores, percentiles, composites) for each core instrument, as required by Florida Medicaid Coverage Policy Section 4.2.1 for prior authorization requests.');
   }
+  return findings;
+}
+
+// CASP/APBA, ASD Assessment Guidelines for Behavior Analysts (marzo 2026),
+// cap. 5, Key Points, p. 54: "It WARNS AGAINST USING DIAGNOSTIC CRITERIA AS
+// CHECKLISTS FOR TREATMENT TARGETS and instead promotes aligning interventions
+// with outcomes MEANINGFUL TO THE CLIENT and their support system."
+//
+// PRECISION SOBRE COBERTURA. Citar un criterio DSM en la seccion de diagnostico
+// es correcto y esperable; el problema es convertirlo en objetivo de
+// tratamiento. Por eso hacen falta DOS condiciones simultaneas:
+//   1. La frase debe ser VERBATIM del DSM-5, no una descripcion clinica comun.
+//      Se excluyen a proposito formulaciones como "stereotyped or repetitive
+//      motor movements" a secas, porque la estereotipia SI es un objetivo ABA
+//      legitimo cuando esta definida operacionalmente; solo se incluye la
+//      cadena completa del criterio.
+//   2. Debe aparecer en CONTEXTO DE META, no en el diagnostico.
+// Asi la regla se dispara cuando el analista copio el criterio dentro de una
+// meta, que es exactamente lo que la fuente advierte.
+const FL_DSM_CRITERION_PHRASES=[
+  /\b(?:social[-\s]emotional|socio[-\s]?emotional)\s+reciprocity\b/i,
+  /\bfailure\s+of\s+normal\s+back[-\s]and[-\s]forth\s+conversation\b/i,
+  /\babnormal\s+social\s+approach\b/i,
+  /\breduced\s+sharing\s+of\s+interests,?\s+emotions,?\s+or\s+affect\b/i,
+  /\bfailure\s+to\s+initiate\s+or\s+respond\s+to\s+social\s+interactions?\b/i,
+  /\bpoorly\s+integrated\s+verbal\s+and\s+non-?verbal\s+communication\b/i,
+  /\babnormalities\s+in\s+eye\s+contact\s+and\s+body\s+language\b/i,
+  /\bdeficits\s+in\s+understanding\s+and\s+use\s+of\s+gestures\b/i,
+  /\bdeficits\s+in\s+developing,?\s+maintaining,?\s+and\s+understanding\s+relationships\b/i,
+  /\bdifficulties\s+adjusting\s+behavio(?:u)?r\s+to\s+suit\s+various\s+social\s+contexts\b/i,
+  /\bdifficulties\s+in\s+sharing\s+imaginative\s+play\b/i,
+  /\babsence\s+of\s+interest\s+in\s+peers\b/i,
+  /\bpersistent\s+deficits\s+in\s+social\s+communication\s+and\s+social\s+interaction\b/i,
+  /\brestricted,?\s+repetitive\s+patterns\s+of\s+behavio(?:u)?r,?\s+interests,?\s+or\s+activities\b/i,
+  /\bstereotyped\s+or\s+repetitive\s+motor\s+movements,?\s+use\s+of\s+objects,?\s+or\s+speech\b/i,
+  /\binsistence\s+on\s+sameness\b/i,
+  /\binflexible\s+adherence\s+to\s+routines\b/i,
+  /\britualized\s+patterns\s+of\s+(?:verbal\s+or\s+non-?verbal\s+)?behavio(?:u)?r\b/i,
+  /\bhighly\s+restricted,?\s+fixated\s+interests\b/i,
+  /\babnormal\s+in\s+intensity\s+or\s+focus\b/i,
+  /\bhyper-?\s*(?:or|\/)\s*hypo-?reactivity\s+to\s+sensory\s+input\b/i,
+  /\bunusual\s+interest\s+in\s+sensory\s+aspects\s+of\s+the\s+environment\b/i,
+  /\brequiring\s+(?:very\s+)?substantial\s+support\b/i,
+  /\breciprocidad\s+socio-?emocional\b/i,
+  /\bd[ée]ficits?\s+persistentes\s+en\s+la\s+comunicaci[óo]n\s+social\b/i,
+  /\bpatrones\s+restrictivos\s+y\s+repetitivos\s+de\s+comportamiento\b/i,
+  /\binsistencia\s+en\s+la\s+(?:igualdad|monoton[í i]a)\b/i,
+  /\bhiper-?\s*o\s*hipo-?reactividad\s+(?:a\s+(?:los\s+)?est[í i]mulos\s+)?sensorial(?:es)?\b/i
+];
+// Contexto de META. Si el criterio aparece aqui, se esta usando como objetivo.
+const FL_GOAL_CONTEXT_RE=/\b(?:goal|objective|target|STO|LTO|short[-\s]term\s+objective|long[-\s]term\s+objective)\b[^.\n]{0,60}$|\b(?:client|recipient|child|student)\s+will\b[^.\n]{0,80}$|\bwill\s+(?:increase|decrease|reduce|improve|demonstrate|engage|display|exhibit|develop)\b[^.\n]{0,60}$|\b(?:meta|objetivo)\b[^.\n]{0,60}$|\bel\s+(?:cliente|ni[ñn]o)\s+(?:aumentar[áa]|reducir[áa]|demostrar[áa])\b[^.\n]{0,60}$/i;
+
+function scanGoalsNotDsmCriteria(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+
+  const hits=[];
+  for(const re of FL_DSM_CRITERION_PHRASES){
+    const gre=new RegExp(re.source,'gi');
+    let m;
+    while((m=gre.exec(text))!==null){
+      // Mirar hacia atras dentro de la MISMA oracion o linea: si lo que precede
+      // al criterio es el encabezado de una meta, el criterio ES la meta.
+      let before=text.slice(Math.max(0,m.index-160),m.index);
+      const cut=Math.max(before.lastIndexOf('. '),before.lastIndexOf('\n'),before.lastIndexOf(';'));
+      if(cut!==-1)before=before.slice(cut+1);
+      if(!FL_GOAL_CONTEXT_RE.test(before))continue;   // diagnostico o narrativa: correcto
+      hits.push({match:m[0].trim(),index:m.index});
+      break;   // una sola aparicion por frase
+    }
+  }
+  if(!hits.length)return findings;
+
+  const frases=hits.map(h=>`"${h.match}"`).join('; ');
+  findings.push({
+    id:uid(),
+    ruleId:'GOALS_NOT_DSM_CRITERIA',
+    severity:'warning',
+    category:'goal_quality',
+    description:`${hits.length===1?'Una meta reproduce la redaccion de un criterio diagnostico':'Varias metas reproducen la redaccion de criterios diagnosticos'} del DSM-5: ${frases}. Las guias CASP/APBA (marzo 2026, cap. 5) advierten expresamente contra usar los criterios diagnosticos como lista de objetivos de tratamiento, y promueven en su lugar alinear las intervenciones con resultados significativos para el cliente y su sistema de apoyo. Un criterio diagnostico describe por que el cliente cumple el diagnostico; no es una conducta observable ni un resultado que mejore su vida diaria. Citarlos en la seccion de diagnostico es correcto: lo que conviene revisar es su uso como objetivo.`,
+    matchedText:hits[0].match,
+    context:extractContext(text,hits[0].index,hits[0].match.length),
+    position:hits[0].index,
+    suggestedAction:'Per the CASP/APBA ASD Assessment Guidelines for Behavior Analysts (March 2026, Chapter 5), diagnostic criteria must not be used as a checklist of treatment targets. Rewrite each goal as an observable, measurable behavior tied to an outcome that matters to this client and their support system in a specific routine or setting, rather than restating the DSM-5 criterion the client meets.',
+    status:'open',
+    createdAt:Date.now()
+  });
   return findings;
 }
 
@@ -5750,6 +5839,8 @@ const REPORT_CAT_LABELS={
     'parent training':'Parent training',
     completeness:'Completeness',
     documentation_convention:'Documentation convention (no action)',
+    goal_quality:'Goal quality',
+    'goal quality':'Goal quality',
     'documentation convention':'Documentation convention (no action)',
     generalization:'Generalization',
     mastery_criteria:'Mastery criteria',
