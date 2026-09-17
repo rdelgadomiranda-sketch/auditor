@@ -1813,6 +1813,10 @@ async function runAudit(){
       // canonico, por eso corre aqui y no con las demas reglas deterministas.
       findings=findings.concat(scanFloridaServiceLimits(text,state.currentDoc.canonical));
 
+      // FL Medicaid 6.2.2: elementos requeridos por meta. El canonico solo
+      // enriquece la descripcion con el numero de metas.
+      findings=findings.concat(scanGoalRequiredElements(text,state.currentDoc.docType,state.currentDoc.canonical));
+
       const docSizeKB=Math.round(state.currentDoc.text.length/1024);
       setProg(82,`Running deep clinical & regulatory audit on full document (${docSizeKB} KB)... this can take 20-60 seconds`);
       try{
@@ -2487,6 +2491,88 @@ function scanCoreInstruments(text,docType,client){
       'Se nombran instrumentos estandarizados pero no se detectan puntuaciones reportadas. La secci\u00f3n 4.2.1 exige que el reporte completo de puntuaci\u00f3n, incluidas las outcome measure scores, se presente con la solicitud de autorizaci\u00f3n.',
       'Include the complete scoring report with outcome measure scores (standard scores, percentiles, composites) for each core instrument, as required by Florida Medicaid Coverage Policy Section 4.2.1 for prior authorization requests.');
   }
+  return findings;
+}
+
+// FL Medicaid 6.2.2: elementos requeridos por CADA target, goal u objective.
+// La norma los enumera literalmente: definicion observable y medible,
+// procedimientos de observacion y medicion directa, nivel actual (linea base),
+// procedimientos de reduccion o adquisicion, condiciones y criterio de dominio,
+// fecha de introduccion, fecha estimada de dominio, plan de generalizacion, y
+// reporte oportuno de progreso indicando si la meta se cumplio, no se cumplio o
+// se modifico. Las metas de entrenamiento a cuidadores anaden los
+// procedimientos de entrenamiento.
+//
+// POR QUE ESTA REGLA NO CUENTA POR META. En R4 los conteos SOBREestiman lo
+// exigido (un logo cuenta como objeto grafico), asi que un deficit era
+// concluyente. Aqui pasa lo contrario: las etiquetas SUBESTIMAN. Una tabla de
+// metas con una sola fila de cabecera "Baseline" sirve a ocho metas y produce
+// una unica ocurrencia. Comparar ocurrencias contra el numero de metas
+// generaria falsos blockers en documentos correctos, que es justo lo que
+// destruye la confianza en el reporte.
+//
+// Lo unico demostrable es la AUSENCIA TOTAL: si un elemento no aparece en
+// ninguna forma en todo el documento, entonces ninguna meta lo tiene. Eso es
+// blocker. Que un elemento aparezca no prueba que lo tengan todas las metas, y
+// la regla no lo afirma: lo dice explicitamente en el hallazgo.
+const FL_GOAL_ELEMENTS=[
+  {key:'definicion',label:'definicion en terminos observables y medibles',
+   re:/\boperational(?:ly)?\s+defin\w+|\bobservable\s+and\s+measurable\b|\bmeasurable\s+terms?\b|\bdefined\s+as\b|\bdefinici[\u00f3o]n\s+operacional|\bobservable\s+y\s+medible/i},
+  {key:'medicion',label:'procedimientos de observacion y medicion directa',
+   re:/\bmeasurement\s+(?:procedure|system|method)|\bdata\s+collection\b|\bdirect\s+observation\b|\bfrequency\s+(?:count|recording|data)|\bduration\s+recording\b|\b(?:partial|whole)[-\s]interval\b|\bmomentary\s+time\s+sampling\b|\brate\s+(?:per|of)\b|\bpercentage\s+of\s+(?:trials|opportunities|intervals)|\brecolecci[\u00f3o]n\s+de\s+datos|\bprocedimiento\s+de\s+medici[\u00f3o]n/i},
+  {key:'lineaBase',label:'nivel actual (linea base)',
+   re:/\bbaseline\b|\bcurrent\s+level\b|\bl[\u00ed i]nea\s+base\b|\bnivel\s+actual\b/i},
+  {key:'procedimientos',label:'procedimientos de reduccion o adquisicion',
+   re:/\b(?:reduction|acquisition|teaching|intervention|treatment)\s+procedures?\b|\bDRA\b|\bDRO\b|\bDRI\b|\bDRL\b|\bFCT\b|\bNCR\b|\bextinction\b|\bprompt(?:ing|\s+hierarchy)\b|\bshaping\b|\bchaining\b|\bdiscrete\s+trial\b|\bprocedimientos?\s+de\s+(?:reducci[\u00f3o]n|adquisici[\u00f3o]n|ense[\u00f1n]anza)/i},
+  {key:'dominio',label:'condiciones y criterio de dominio',
+   re:/\bmastery\s+criteri\w+|\bcriteri\w+\s+for\s+mastery\b|\bcriterion\s+for\s+acquisition\b|\b(?:will\s+be\s+)?(?:considered\s+)?master(?:ed|y)\s+(?:when|at|after)|\b\d+\s*(?:out\s+of|\/)\s*\d+\s+(?:opportunities|trials|sessions)|\bconsecutive\s+sessions\b|\bcriterio\s+de\s+dominio\b/i},
+  {key:'fechaIntro',label:'fecha de introduccion',
+   re:/\bdate\s+of\s+introduction\b|\bintroduction\s+date\b|\bdate\s+(?:introduced|initiated)\b|\bintroduced\s+on\b|\bfecha\s+de\s+introducci[\u00f3o]n\b/i},
+  {key:'fechaDominio',label:'fecha estimada de dominio',
+   re:/\bestimated\s+date\s+of\s+mastery\b|\b(?:projected|anticipated|estimated|target)\s+(?:date\s+of\s+)?mastery\b|\bmastery\s+date\b|\btarget\s+date\b|\bfecha\s+(?:estimada\s+)?de\s+dominio\b/i},
+  {key:'generalizacion',label:'plan de generalizacion',
+   re:/\bgeneraliz\w+|\bgeneralizaci[\u00f3o]n\b/i},
+  {key:'reporte',label:'reporte de progreso indicando si la meta se cumplio, no se cumplio o se modifico',
+   re:/\b(?:goals?|objectives?|targets?|sto|lto)\s+(?:was|were|is|are|not\s+)?\s*(?:met|unmet|modified)\b|\bmet\s*\/\s*not\s+met\b|\bnot\s+met\b|\bstatus\s*:\s*(?:met|in\s+progress|modified|ongoing)|\breporting\s+of\s+progress\b|\bprogress\s+(?:report|update|is\s+reported)|\bcumplid[oa]\s*\/\s*no\s+cumplid[oa]\b/i}
+];
+// Solo para metas de entrenamiento a cuidadores.
+const FL_CAREGIVER_TRAINING_PROC_RE=/\btraining\s+procedures?\b|\b(?:BST|behavio(?:u)?ral\s+skills\s+training)\b|\b(?:instruction|modeling|rehearsal|feedback)\b[^.]{0,80}\b(?:instruction|modeling|rehearsal|feedback)\b|\bprocedimientos?\s+de\s+entrenamiento\b/i;
+const FL_CAREGIVER_CONTENT_RE=/\b(?:parent|caregiver|guardian|family)\s+(?:training|goals?|objectives?)\b|\b97156\b|\bentrenamiento\s+(?:a\s+)?(?:padres|cuidadores)\b/i;
+// Evidencia de que el documento realmente ENUMERA metas, no de que mencione la
+// palabra. Una carta de necesidad medica que diga "no targets" no debe recibir
+// un blocker con nueve elementos faltantes, asi que se exige una senal de
+// SECCION de metas, no un termino suelto.
+const FL_HAS_GOALS_RE=/(?:treatment|behavior)\s+goals?|goals?\s+and\s+objectives?|goals?\s+table|short[-\s]term\s+objectives?|long[-\s]term\s+objectives?|\bSTO\s*#?\s*\d|\bLTO\s*#?\s*\d|\bgoal\s*#?\s*\d|\bobjective\s*#?\s*\d|target\s+behaviors?|metas?\s+y\s+objetivos?|objetivos?\s+a\s+(?:corto|largo)\s+plazo/i;
+
+function scanGoalRequiredElements(text,docType,canonical){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+  if(!FL_HAS_GOALS_RE.test(text))return findings;  // sin metas, lo cubre la regla de secciones
+
+  const missing=FL_GOAL_ELEMENTS.filter(el=>!el.re.test(text)).map(el=>el.label);
+
+  // Procedimientos de entrenamiento: solo si el documento tiene contenido de
+  // entrenamiento a cuidadores, que es cuando 6.2.2 los exige.
+  const hasCaregiver=FL_CAREGIVER_CONTENT_RE.test(text);
+  if(hasCaregiver&&!FL_CAREGIVER_TRAINING_PROC_RE.test(text)){
+    missing.push('procedimientos de entrenamiento para las metas de cuidadores');
+  }
+  if(!missing.length)return findings;
+
+  const nMetas=canonical?((Array.isArray(canonical.behaviors)?canonical.behaviors.length:0)+
+                          (Array.isArray(canonical.caregiverGoals)?canonical.caregiverGoals.length:0)):0;
+  const contexto=nMetas?` El documento plantea ${nMetas} meta${nMetas===1?'':'s'} entre conductas y objetivos de cuidadores.`:'';
+  findings.push({
+    id:uid(),
+    ruleId:'FL_GOAL_REQUIRED_ELEMENTS',
+    severity:'blocker',
+    category:'florida_medicaid',
+    description:`La Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024, seccion 6.2.2) exige que CADA target, goal u objective contenga nueve elementos. ${missing.length===1?'No aparece en ninguna parte del documento':'No aparecen en ninguna parte del documento'}: ${missing.join('; ')}.${contexto} Si el elemento no figura en ningun sitio, ninguna meta lo tiene. Nota: esta regla solo detecta la ausencia total; que un elemento aparezca NO prueba que lo tengan todas las metas, asi que conviene revisar meta por meta los que si estan.`,
+    suggestedAction:'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 6.2.2, every proposed treatment target, goal, and objective must state all of: definition in observable, measurable terms; direct observation and measurement procedures; current level (baseline); behavior reduction or acquisition procedures; condition(s) under which the behavior is to be demonstrated and mastery criteria; date of introduction; estimated date of mastery; plan for generalization; and timely reporting of progress stating whether the goal is met, not met, or modified (with explanation). Caregiver training goals additionally require the training procedures. Add the missing elements to every goal.',
+    status:'open',
+    createdAt:Date.now()
+  });
   return findings;
 }
 
