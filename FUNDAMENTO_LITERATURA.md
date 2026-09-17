@@ -210,7 +210,7 @@ Todas citan Florida Medicaid, texto verificado.
 
 **R5 — Explicación de falta de progreso (`FL_NO_PROGRESS_EXPLANATION`). ✅ IMPLEMENTADO** como `scanNoProgressExplanation` más cobertura en el prompt conceptual para el caso de juicio. Si el reassessment no evidencia progreso significativo, debe explicar por qué y qué cambia. *§6.2.3.*
 
-**R6 — Servicios no cubiertos (`FL_NON_COVERED`).** Añadir a las reglas deterministas: reclusión y restricción manual/mecánica/química, 1:1 aide / shadow / companion, psicoterapia y testing psicológico, travel time, servicios simultáneos sin autorización. `blocker`. *§5.2.* **Nota clínica:** esto se solapa parcialmente con la lista de intervenciones prohibidas que ya existe, pero el fundamento es distinto — allí es "no es ABA", aquí es "Medicaid no lo paga". Conviene que el hallazgo lo diga.
+**R6 — Servicios no cubiertos (`FL_NON_COVERED`). ✅ IMPLEMENTADO** como `scanNonCoveredServices`. Añadir a las reglas deterministas: reclusión y restricción manual/mecánica/química, 1:1 aide / shadow / companion, psicoterapia y testing psicológico, travel time, servicios simultáneos sin autorización. `blocker`. *§5.2.* **Nota clínica:** esto se solapa parcialmente con la lista de intervenciones prohibidas que ya existe, pero el fundamento es distinto — allí es "no es ABA", aquí es "Medicaid no lo paga". Conviene que el hallazgo lo diga.
 
 **R7 — Participación parental documentada (`FL_PARENT_PARTICIPATION`).** Esfuerzos documentados; si no participa, razones + impactos + mitigación; y en continuación, datos de participación. *§4.2.2, §7.2.*
 

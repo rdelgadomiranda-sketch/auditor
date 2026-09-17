@@ -1765,6 +1765,7 @@ async function runAudit(){
     await sleep(80);
     findings=findings.concat(scanCoreInstruments(text,state.currentDoc.docType,state.clients.find(c=>c.id===state.activeClientId)));
     findings=findings.concat(scanNoProgressExplanation(text,state.currentDoc.docType));
+    findings=findings.concat(scanNonCoveredServices(text,state.currentDoc.docType));
     findings=findings.concat(scanAgeConsistency(text));
     findings=findings.concat(scanCommunicationCongruence(text));
     findings=findings.concat(scanSTOIntegrity(text));
@@ -2485,6 +2486,161 @@ function scanCoreInstruments(text,docType,client){
     add('FL_CORE_SCORING_REPORT','warning',
       'Se nombran instrumentos estandarizados pero no se detectan puntuaciones reportadas. La secci\u00f3n 4.2.1 exige que el reporte completo de puntuaci\u00f3n, incluidas las outcome measure scores, se presente con la solicitud de autorizaci\u00f3n.',
       'Include the complete scoring report with outcome measure scores (standard scores, percentiles, composites) for each core instrument, as required by Florida Medicaid Coverage Policy Section 4.2.1 for prior authorization requests.');
+  }
+  return findings;
+}
+
+// FL Medicaid 5.2: servicios NO cubiertos. Su presencia en un plan de analisis
+// de conducta no solo es un problema clinico: el servicio queda fuera del
+// beneficio y la reclamacion se deniega.
+//
+// Dos guardas contra el falso positivo, que aqui son el riesgo principal:
+//
+// 1. NEGACION. Un buen plan de crisis dice explicitamente que NO se usa
+//    reclusion ni restriccion. Marcar esa frase seria exactamente el falso
+//    blocker que destruye la confianza en el reporte, asi que se descarta toda
+//    mencion negada dentro de la misma oracion.
+// 2. LENGUAJE DE PRESTACION. Un assessment cita con normalidad evaluaciones
+//    psicologicas previas en la revision de registros; de hecho las guias
+//    CASP/APBA piden revisarlas. Esas categorias solo se marcan cuando el
+//    documento PROPONE prestar el servicio, no cuando lo menciona.
+const FL_NEGATION_RE=/\b(?:no|not|never|without|avoid(?:s|ed|ing)?|prohibit(?:s|ed)?|refrain|exclud(?:e|es|ed)|discontinu(?:e|ed)|contraindicated|instead\s+of|rather\s+than|in\s+lieu\s+of|free\s+of|absence\s+of)\b|\bn[o']t\b|\b(?:nunca|jam[\u00e1a]s|sin|prohibid[oa]s?|se\s+evita(?:n|r[\u00e1a])?|no\s+se)\b/i;
+const FL_PROVISION_RE=/\b(?:will\s+(?:be\s+)?(?:provid\w*|deliver\w*|includ\w*|render\w*|bill\w*|implement\w*)|provid(?:e|es|ed|ing)|deliver(?:s|ed|ing)?|render(?:s|ed)?|recommend(?:s|ed|ation|ations)?|includ(?:e|es|ed)\s+in\s+the\s+(?:plan|treatment|services|schedule)|authoriz(?:e|ed|ation)|request(?:s|ed)?|service\s+schedule|units?\b|hours?\s+per\s+week|\bcpt\b|bill(?:s|ed|ing)?)\b|\b(?:se\s+(?:proporcionar[\u00e1a]|brindar[\u00e1a]|ofrecer[\u00e1a])|se\s+recomienda|incluid[oa]\s+en\s+el\s+plan|unidades|horas\s+por\s+semana)\b/i;
+
+// requiresProvision: true = solo se marca si el documento propone prestarlo.
+const FL_NON_COVERED_SERVICES=[
+  {id:'FL_EXCLUDED_RESTRAINT',severity:'blocker',requiresProvision:false,
+   label:'reclusion o restriccion (manual, mecanica o quimica)',
+   patterns:[
+     /\bseclusion\b/i,
+     /\b(?:manual|mechanical|chemical|physical|prone|supine|protective)\s+restraints?\b/i,
+     /\brestraints?\s+(?:procedure|technique|protocol)s?\b/i,
+     /\b(?:therapeutic|basket|physical)\s+holds?\b/i,
+     /\breclusi[\u00f3o]n\b/i,
+     /\b(?:restricci[\u00f3o]n|sujeci[\u00f3o]n)\s+(?:f[\u00ed i]sica|mec[\u00e1a]nica|qu[\u00ed i]mica)\b/i
+   ],
+   why:'La seccion 5.2 excluye de cobertura cualquier procedimiento o tecnica de manejo de crisis que implique reclusion o restriccion manual, mecanica o quimica para controlar conductas.'},
+
+  {id:'FL_EXCLUDED_ONE_TO_ONE_AIDE',severity:'blocker',requiresProvision:false,
+   label:'acompanamiento 1:1, cuidado personal, companion, chaperone o shadow',
+   patterns:[
+     /\b(?:1\s*:\s*1|one[-\s]to[-\s]one|1[-\s]on[-\s]1)\s*(?:aides?|aids?|assistants?|paraprofessionals?)\b/i,
+     /\bpersonal\s+care\s+(?:assistance|assistant|services?|aide)\b/i,
+     /\b(?:companion|chaperone)\s+services?\b/i,
+     /\b(?:acting\s+as|serve\s+as|function\s+as)\s+(?:a\s+)?(?:1\s*:\s*1|shadow|companion|chaperone)\b/i,
+     /\bshadow(?:ing)?\s+(?:services?|support)\b/i
+   ],
+   why:'La seccion 5.2 excluye la supervision del recipient, la asistencia de cuidado personal (por ejemplo actuar como acompanante 1:1), y los servicios de companion, chaperone o shadow, en cualquier actividad o entorno. Nota: el formato 1:1 de la terapia directa si esta cubierto; lo excluido es el rol de acompanante.'},
+
+  {id:'FL_EXCLUDED_CHILDCARE',severity:'warning',requiresProvision:true,
+   label:'servicios de cuidador o guarderia',
+   patterns:[
+     /\bchild\s?care\s+services?\b/i,
+     /\bbabysitting\b/i,
+     /\bday\s?care\s+services?\b/i,
+     /\b(?:cuidado\s+infantil|guarder[\u00ed i]a|ninera)\b/i
+   ],
+   why:'La seccion 5.2 excluye los servicios de cuidador o guarderia.'},
+
+  {id:'FL_EXCLUDED_OTHER_THERAPIES',severity:'blocker',requiresProvision:true,
+   label:'testing psicologico, psicoterapia u otras terapias no cubiertas',
+   patterns:[
+     /\bpsychological\s+testing\b/i,
+     /\bneuropsycholog(?:y|ical\s+(?:testing|evaluation|assessment))\b/i,
+     /\bpsychotherapy\b/i,
+     /\bcognitive\s+(?:behavioral\s+)?therapy\b/i,
+     /\bsex\s+therapy\b/i,
+     /\bpsychoanalysis\b/i,
+     /\bhypnotherapy\b/i,
+     /\blong[-\s]term\s+counseling\b/i,
+     /\b(?:psicoterapia|psicoan[\u00e1a]lisis|hipnoterapia|terapia\s+cognitiv[oa]|consejer[\u00ed i]a\s+a\s+largo\s+plazo)\b/i
+   ],
+   why:'La seccion 5.2 excluye el testing psicologico, la neuropsicologia, la psicoterapia, la terapia cognitiva, la terapia sexual, el psicoanalisis, la hipnoterapia y la consejeria a largo plazo. Citar una evaluacion previa en la revision de registros es correcto; proponerlos como servicio dentro del plan de analisis de conducta, no.'},
+
+  {id:'FL_EXCLUDED_TRAVEL_TIME',severity:'blocker',requiresProvision:false,
+   label:'tiempo de viaje',
+   patterns:[
+     /\btravel\s+time\b/i,
+     /\btravel\s+hours?\b/i,
+     /\btiempo\s+de\s+(?:viaje|traslado)\b/i
+   ],
+   why:'La seccion 5.2 excluye el tiempo de viaje.'},
+
+  {id:'FL_EXCLUDED_SAME_DAY_SERVICE',severity:'warning',requiresProvision:false,
+   label:'servicio incompatible el mismo dia',
+   patterns:[
+     /\bbehavioral\s+health\s+overlay\b/i,
+     /\btherapeutic\s+behavioral\s+on[-\s]?site\b/i,
+     /\btherapeutic\s+group\s+care\b/i
+   ],
+   why:'La seccion 5.2 excluye los servicios de analisis de conducta prestados el mismo dia que behavioral health overlay services, therapeutic behavioral on-site services o therapeutic group care services, porque esos ya incluyen tratamiento conductual.'}
+];
+
+// La negacion puede ir ANTES del termino ("no restraint will be used") o
+// DESPUES, en su predicado ("physical restraint is prohibited", "travel time
+// is not billed"). Las dos se comprueban dentro de la misma oracion.
+//
+// Hacia delante la comprobacion es deliberadamente estrecha: el negador debe
+// colgar del verbo que sigue al termino, a no mas de tres palabras. Una
+// busqueda amplia suprimiria frases donde la negacion pertenece a otra clausula
+// y el servicio si se propone, como "manual restraint may be used when
+// de-escalation does not work".
+const FL_NEGATION_AFTER_RES=[
+  /^[\s,]*(?:\w+\s+){0,3}?\b(?:is|are|was|were|will|shall|may|can|must|do|does|did)\s+(?:not|never)\b/i,
+  /^[\s,]*(?:\w+\s+){0,3}?\b(?:is|are|was|were)\s+(?:strictly\s+|expressly\s+|explicitly\s+)?(?:prohibited|excluded|contraindicated|avoided|banned|disallowed|not\s+permitted|not\s+allowed|never\s+used)\b/i,
+  /^[\s,]*(?:\w+\s+){0,3}?\b(?:no\s+se|nunca\s+se)\s+\w+/i,
+  /^[\s,]*(?:\w+\s+){0,3}?\b(?:est[\u00e1a]\s+prohibid[oa]|no\s+est[\u00e1a]\s+(?:permitid[oa]|cubiert[oa]))\b/i
+];
+
+function _flNegatedAt(text,index,len){
+  let before=text.slice(Math.max(0,index-140),index);
+  const cut=Math.max(before.lastIndexOf('. '),before.lastIndexOf('\n'),before.lastIndexOf(';'));
+  if(cut!==-1)before=before.slice(cut+1);
+  if(FL_NEGATION_RE.test(before))return true;
+  // Predicado posterior, recortado al final de la oracion.
+  let after=text.slice(index+(len||0),Math.min(text.length,index+(len||0)+120));
+  const end=after.search(/[.;\n]/);
+  if(end!==-1)after=after.slice(0,end);
+  return FL_NEGATION_AFTER_RES.some(re=>re.test(after));
+}
+
+function _flProvisionNear(text,index,len){
+  const w=text.slice(Math.max(0,index-160),Math.min(text.length,index+len+160));
+  return FL_PROVISION_RE.test(w);
+}
+
+function scanNonCoveredServices(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='iep')return findings;  // un IEP describe servicios de otro sistema
+  for(const svc of FL_NON_COVERED_SERVICES){
+    let hit=null;
+    for(const re of svc.patterns){
+      re.lastIndex=0;
+      const gre=new RegExp(re.source,re.flags.includes('g')?re.flags:re.flags+'g');
+      let m;
+      while((m=gre.exec(text))!==null){
+        if(_flNegatedAt(text,m.index,m[0].length))continue;
+        if(svc.requiresProvision&&!_flProvisionNear(text,m.index,m[0].length))continue;
+        hit={match:m[0],index:m.index};
+        break;
+      }
+      if(hit)break;
+    }
+    if(!hit)continue;
+    findings.push({
+      id:uid(),
+      ruleId:svc.id,
+      severity:svc.severity,
+      category:'florida_medicaid',
+      description:`El documento menciona ${svc.label} ("${hit.match}") sin negarlo. ${svc.why} Florida Medicaid Behavior Analysis Services Coverage Policy, diciembre 2024, seccion 5.2.`,
+      matchedText:hit.match,
+      context:extractContext(text,hit.index,hit.match.length),
+      position:hit.index,
+      suggestedAction:`Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 5.2, this is a non-covered service under the behavior analysis benefit. Remove it from the behavior plan, or state explicitly that it is not part of the behavior analysis services being requested and identify the separate benefit or provider responsible for it.`,
+      status:'open',
+      createdAt:Date.now()
+    });
   }
   return findings;
 }
