@@ -1079,13 +1079,20 @@ const CLINICAL_SAFETY_RULES = [
       const findings=[];
       const lower=text.toLowerCase();
       const hasProtocolMod=/(protocol modification|97155|bcba.*supervis|supervision.*bcba)/.test(lower);
-      const hasIOA=/(interobserver|ioa|inter-observer|inter observer|treatment integrity)/.test(lower);
+      // OJO: "treatment integrity" NO acredita IOA. Son construcciones distintas
+      // y las guias CASP/APBA las tratan en secciones separadas (cap. 4): el IOA
+      // evalua la FIABILIDAD DEL DATO comparando observadores independientes y
+      // revela deriva del observador, mientras que la integridad o fidelidad
+      // mide si el PROCEDIMIENTO se ejecuto como estaba indicado. Aceptar una
+      // por la otra dejaba pasar documentos sin IOA. La fidelidad procedimental
+      // la comprueba scanProceduralFidelity.
+      const hasIOA=/(interobserver|\bioa\b|inter-observer|inter observer|inter-rater|interrater)/.test(lower);
       if(hasProtocolMod&&!hasIOA){
         findings.push({
           ruleId:'IOA_PROTOCOL_MODIFICATION',severity:'notice',category:'regulatory_compliance',
-          description:'The document includes protocol modification (97155) or supervision content but does not mention interobserver agreement (IOA) procedures. Florida Medicaid and BACB standards require IOA data to be collected regularly to verify treatment integrity. IOA should be documented in the supervision plan.',
+          description:'The document includes protocol modification (97155) or supervision content but does not mention interobserver agreement (IOA) procedures. IOA evaluates the RELIABILITY of the data by having two observers record the same behavior independently, and it also reveals observer drift and operational definitions that need clarifying. Note that IOA is a separate requirement from procedural or treatment fidelity, which measures whether the procedure was implemented as written: documenting one does not satisfy the other. IOA should be documented in the supervision plan.',
           suggestedAction:'Add a statement that the BCBA and RBT will conduct IOA for each target behavior and replacement skill. Specify that IOA will be ≥90% before accepting data as reliable, and will be conducted in at least 20% of sessions per month.',
-          suggestedRewrite:'Interobserver agreement (IOA) will be conducted by the supervising BCBA and the RBT for each target behavior and replacement skill. IOA must reach ≥90% before data are accepted as clinically reliable. IOA will be completed in a minimum of 20% of direct treatment sessions per month to ensure treatment integrity.',
+          suggestedRewrite:'Interobserver agreement (IOA) will be conducted by the supervising BCBA and the RBT for each target behavior and replacement skill. IOA must reach ≥90% before data are accepted as clinically reliable. IOA will be completed in a minimum of 20% of direct treatment sessions per month. Where IOA falls below criterion, the operational definitions and recording procedures will be reviewed and data collectors retrained.',
           status:'open',createdAt:Date.now()
         });
       }
@@ -1768,6 +1775,7 @@ async function runAudit(){
     findings=findings.concat(scanNonCoveredServices(text,state.currentDoc.docType));
     findings=findings.concat(scanParentParticipation(text,state.currentDoc.docType));
     findings=findings.concat(scanAdminRequiredElements(text,state.currentDoc.docType));
+    findings=findings.concat(scanProceduralFidelity(text,state.currentDoc.docType));
     findings=findings.concat(scanAgeConsistency(text));
     findings=findings.concat(scanCommunicationCongruence(text));
     findings=findings.concat(scanSTOIntegrity(text));
@@ -2500,6 +2508,54 @@ function scanCoreInstruments(text,docType,client){
     add('FL_CORE_SCORING_REPORT','warning',
       'Se nombran instrumentos estandarizados pero no se detectan puntuaciones reportadas. La secci\u00f3n 4.2.1 exige que el reporte completo de puntuaci\u00f3n, incluidas las outcome measure scores, se presente con la solicitud de autorizaci\u00f3n.',
       'Include the complete scoring report with outcome measure scores (standard scores, percentiles, composites) for each core instrument, as required by Florida Medicaid Coverage Policy Section 4.2.1 for prior authorization requests.');
+  }
+  return findings;
+}
+
+// CASP/APBA, ASD Assessment Guidelines for Behavior Analysts (marzo 2026),
+// cap. 4, p. 43: "Just as practitioners measure the treatment fidelity of
+// ABA-based services, they should also measure and evaluate the PROCEDURAL
+// FIDELITY OF ASSESSMENT IMPLEMENTATION... A simple behavioral checklist can be
+// used to evaluate whether each step of the assessment protocol was followed
+// accurately. Observers can score each step as 'Yes' or 'No', yielding a
+// PERCENTAGE SCORE FOR ADHERENCE... The goal is FULL ADHERENCE to assessment
+// protocols - especially when using standardized tools where procedural
+// fidelity directly affects the validity of results."
+//
+// El capitulo 4 trata el IOA (p. 42) y la fidelidad procedimental (p. 43) en
+// secciones SEPARADAS porque miden cosas distintas: el IOA evalua la fiabilidad
+// del dato comparando observadores independientes; la fidelidad evalua si el
+// procedimiento se ejecuto como estaba escrito. Documentar uno no satisface el
+// otro, y esta regla no se da por satisfecha con una mencion de IOA. Por el
+// mismo motivo se corrigio el detector de IOA_PROTOCOL_MODIFICATION, que
+// aceptaba "treatment integrity" como si acreditara IOA.
+const FL_PROCEDURAL_FIDELITY_RE=/\bprocedural\s+(?:fidelity|integrity)\b|\btreatment\s+(?:fidelity|integrity)\b|\bimplementation\s+fidelity\b|\bfidelity\s+(?:checklist|check|data|measure|score|assessment|probe)s?\b|\bintegrity\s+(?:checklist|check|data|probe)s?\b|\bprotocol\s+adherence\b|\badherence\s+(?:checklist|score|data|percentage)\b|\bfidelidad\s+(?:procedimental|de\s+implementaci[óo]n|del\s+tratamiento)\b|\bintegridad\s+(?:procedimental|del\s+tratamiento)\b|\badherencia\s+al\s+protocolo\b/i;
+const FL_IOA_MENTION_RE=/\binterobserver\s+agreement\b|\binter[-\s]observer\s+agreement\b|\bIOA\b|\binter[-\s]?rater\s+(?:reliability|agreement)\b|\bacuerdo\s+entre\s+observadores\b/i;
+// Un criterio de adherencia: porcentaje, adherencia total, o puntuacion paso a paso.
+const FL_FIDELITY_CRITERION_RE=/\b\d{1,3}\s*%|\b\d{1,3}\s*percent\b|\bfull\s+adherence\b|\ball\s+(?:of\s+the\s+)?steps?\b|\beach\s+step\b|\byes\s*\/\s*no\b|\badherencia\s+total\b|\btodos\s+los\s+pasos\b/i;
+
+function scanProceduralFidelity(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+  const add=(ruleId,description,suggestedAction,suggestedRewrite)=>findings.push({
+    id:uid(),ruleId,severity:'warning',category:'ioa_requirement',description,suggestedAction,
+    suggestedRewrite,status:'open',createdAt:Date.now()
+  });
+
+  const hasFidelity=FL_PROCEDURAL_FIDELITY_RE.test(text);
+  const hasIOA=FL_IOA_MENTION_RE.test(text);
+
+  if(!hasFidelity){
+    add('PROCEDURAL_FIDELITY',
+      `No se detecta documentacion de la FIDELIDAD PROCEDIMENTAL: si los procedimientos de evaluacion y los protocolos de tratamiento se ejecutan como estan escritos. Las guias CASP/APBA (marzo 2026, cap. 4) la exigen junto al IOA y las tratan en secciones separadas porque miden cosas distintas: el IOA evalua la fiabilidad del DATO comparando observadores independientes, mientras que la fidelidad evalua si el PROCEDIMIENTO se ejecuto como estaba indicado.${hasIOA?' El documento SI documenta IOA, pero eso no satisface este requisito: son dos cosas distintas.':''} Importa especialmente con instrumentos estandarizados, donde la fidelidad procedimental afecta directamente a la validez de los resultados.`,
+      'Per the CASP/APBA ASD Assessment Guidelines for Behavior Analysts (March 2026, Chapter 4), add a procedural fidelity measure that is separate from IOA: a step-by-step behavioral checklist of the assessment or treatment protocol, scored Yes/No per step to yield a percentage adherence score. State who completes it, how often, and the adherence criterion. Interobserver agreement does not satisfy this requirement.',
+      'Procedural fidelity: implementation of each assessment and treatment protocol will be evaluated with a step-by-step checklist scored as "Yes" (implemented correctly) or "No" (implemented incorrectly), yielding a percentage adherence score. The supervising analyst will complete fidelity checks at least monthly for each protocol, with a criterion of 100% adherence for standardized assessment administration and 90% or above for treatment protocols. Where adherence falls below criterion, the implementer will be retrained and the protocol re-checked before the data are used for clinical decisions.');
+  }else if(!FL_FIDELITY_CRITERION_RE.test(text)){
+    add('PROCEDURAL_FIDELITY_CRITERION',
+      'El documento menciona fidelidad o integridad procedimental pero no se detecta un CRITERIO de adherencia que la haga verificable: un porcentaje, la adherencia total, o la puntuacion paso a paso. Las guias CASP/APBA (marzo 2026, cap. 4) describen una lista de verificacion puntuada paso a paso como "Si" o "No" que produce un porcentaje de adherencia, y fijan como meta la adherencia total a los protocolos de evaluacion.',
+      'Per the CASP/APBA ASD Assessment Guidelines for Behavior Analysts (March 2026, Chapter 4), state the adherence criterion for procedural fidelity and how it is scored: a step-by-step checklist scored Yes/No yielding a percentage, with full adherence as the goal for standardized assessment administration.',
+      'Procedural fidelity will be scored with a step-by-step checklist marked "Yes" or "No" for each protocol step, yielding a percentage adherence score. The criterion is 100% adherence for standardized assessment administration and 90% or above for treatment protocols; below criterion, the implementer is retrained before the data inform clinical decisions.');
   }
   return findings;
 }

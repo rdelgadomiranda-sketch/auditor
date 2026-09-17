@@ -222,7 +222,7 @@ Todas citan Florida Medicaid, texto verificado.
 
 **R10 — Fuente de la evidencia funcional (`FUNCTION_EVIDENCE_SOURCE`). ✅ IMPLEMENTADO** como `scanFunctionEvidenceSource`. Exigir que se nombre el método; `blocker` en conductas peligrosas si solo hay evidencia indirecta. El canónico ya extrae `functionSource`. *CASP cap. 3, p. 22.*
 
-**R11 — Fidelidad procedimental distinta del IOA (`PROCEDURAL_FIDELITY`).** Requisito propio; que no se dé por satisfecho con una mención de IOA. *CASP cap. 4, p. 43.*
+**R11 — Fidelidad procedimental distinta del IOA (`PROCEDURAL_FIDELITY`). ✅ IMPLEMENTADO** como `scanProceduralFidelity`, con corrección del detector de `IOA_PROTOCOL_MODIFICATION`, que aceptaba "treatment integrity" como si acreditara IOA. Requisito propio; que no se dé por satisfecho con una mención de IOA. *CASP cap. 4, p. 43.*
 
 **R12 — Cuatro dominios de evaluación (`SEC_ASSESSMENT_DOMAINS`).** Los dos primeros suelen estar; calidad de vida y condiciones co-ocurrentes casi nunca. *CASP cap. 5, p. 54.*
 
