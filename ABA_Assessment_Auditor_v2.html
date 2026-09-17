@@ -1764,6 +1764,7 @@ async function runAudit(){
     setProg(78,'Verificando instrumentos n\u00facleo exigidos por Florida Medicaid...');
     await sleep(80);
     findings=findings.concat(scanCoreInstruments(text,state.currentDoc.docType,state.clients.find(c=>c.id===state.activeClientId)));
+    findings=findings.concat(scanNoProgressExplanation(text,state.currentDoc.docType));
     findings=findings.concat(scanAgeConsistency(text));
     findings=findings.concat(scanCommunicationCongruence(text));
     findings=findings.concat(scanSTOIntegrity(text));
@@ -2481,6 +2482,77 @@ function scanCoreInstruments(text,docType,client){
       'Se nombran instrumentos estandarizados pero no se detectan puntuaciones reportadas. La secci\u00f3n 4.2.1 exige que el reporte completo de puntuaci\u00f3n, incluidas las outcome measure scores, se presente con la solicitud de autorizaci\u00f3n.',
       'Include the complete scoring report with outcome measure scores (standard scores, percentiles, composites) for each core instrument, as required by Florida Medicaid Coverage Policy Section 4.2.1 for prior authorization requests.');
   }
+  return findings;
+}
+
+// FL Medicaid 6.2.3, ultimo parrafo: "If significant clinical progress is not
+// made over the course of an authorization period, the provider must explain
+// why clinically significant progress was not made and treatment changes to
+// promote progress."
+//
+// La obligacion es CONDICIONAL y su antecedente ("no hubo progreso
+// significativo") es un juicio clinico sobre los datos, que un regex no puede
+// emitir. Por eso esta regla NO juzga el progreso: solo actua cuando el
+// PROPIO DOCUMENTO declara que el progreso fue nulo, minimo o limitado. En ese
+// caso el antecedente ya esta establecido por el analista y lo verificable es
+// si estan las dos consecuencias que la norma exige: (a) por que no se logro y
+// (b) que cambios de tratamiento se haran.
+// El caso en que los datos muestran estancamiento pero el texto no lo dice
+// queda para la pasada conceptual, que si puede juzgarlo.
+const FL_NO_PROGRESS_SIGNALS=[
+  /\bno\s+(?:significant\s+|clinically\s+significant\s+|measurable\s+|meaningful\s+)?progress\b/i,
+  /\b(?:minimal|limited|little|lack\s+of|insufficient|negligible|slow)\s+progress\b/i,
+  /\bprogress\s+(?:was|has\s+been)\s+(?:minimal|limited|slow|insufficient|not\s+significant)/i,
+  /\b(?:did|has)\s+not\s+(?:make|made|demonstrate|demonstrated|show|shown)\s+(?:significant\s+|clinically\s+significant\s+)?progress\b/i,
+  /\bremains?\s+(?:at|near)\s+baseline\b/i,
+  /\breturned\s+to\s+baseline\b/i,
+  /\b(?:regression|regressed|plateaued)\b/i,
+  /\bno\s+(?:significant\s+)?(?:change|reduction|decrease|improvement)\s+in\s+(?:the\s+)?(?:behavior|frequency|rate|duration|target|maladaptive)/i,
+  /\bsin\s+progreso\b/i,
+  /\bprogreso\s+(?:m[\u00ed i]nimo|limitado|insuficiente|escaso)\b/i,
+  /\bno\s+se\s+observ[\u00f3o]\s+progreso\b/i,
+  /\bretroceso\b/i
+];
+// (a) Por que no se logro el progreso.
+const FL_EXPLANATION_SIGNALS=/\b(?:due\s+to|attributed\s+to|because\s+of|as\s+a\s+result\s+of|barriers?|factors?\s+(?:that|contributing|affecting|impacting)|reasons?\s+(?:for|why)|impacted\s+by|interfered\s+with|limited\s+by|secondary\s+to|likely\s+related\s+to)\b|\b(?:debido\s+a|se\s+atribuye|a\s+causa\s+de|barreras?|factores?\s+que|razon(?:es)?\s+por|relacionado\s+con)\b/i;
+// (b) Que cambios de tratamiento se haran para promover el progreso.
+const FL_TREATMENT_CHANGE_SIGNALS=/\b(?:treatment\s+(?:changes?|modifications?)|modif(?:y|ied|ication|ications)\s+(?:to|of)\s+the\s+(?:treatment|behavior)\s+plan|protocol\s+modification|revis(?:e|ed|ions?)\s+(?:the\s+)?(?:plan|protocol|intervention|goals?|objectives?)|new\s+intervention|change\s+(?:in|to)\s+(?:the\s+)?intervention|adjust(?:ed|ments?)?\s+to\s+(?:the\s+)?(?:plan|protocol|intervention)|increase\s+in\s+(?:treatment\s+)?hours|will\s+be\s+(?:modified|revised|adjusted)|recommended\s+changes)\b|\b(?:cambios?\s+(?:al|en\s+el)\s+(?:tratamiento|plan)|modificaci[\u00f3o]n\s+del\s+protocolo|se\s+(?:modificar[\u00e1a]|revisar[\u00e1a]|ajustar[\u00e1a]))\b/i;
+
+function scanNoProgressExplanation(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  // 6.2.3 rige la reautorizacion y continuacion de servicios. Se acepta tambien
+  // un documento no clasificado que se declare a si mismo como tal.
+  const isReauth=docType==='reassessment'||/\b(?:continuation\s+of\s+services|reauthorization)\b/i.test(text);
+  if(!isReauth)return findings;
+
+  let signal=null;
+  for(const re of FL_NO_PROGRESS_SIGNALS){
+    const m=text.match(re);
+    if(m){signal=m;break;}
+  }
+  if(!signal)return findings;  // el documento no declara falta de progreso
+
+  const hasExplanation=FL_EXPLANATION_SIGNALS.test(text);
+  const hasChanges=FL_TREATMENT_CHANGE_SIGNALS.test(text);
+  if(hasExplanation&&hasChanges)return findings;
+
+  const falta=[];
+  if(!hasExplanation)falta.push('la explicacion de POR QUE no se logro el progreso clinicamente significativo');
+  if(!hasChanges)falta.push('los CAMBIOS DE TRATAMIENTO que se haran para promoverlo');
+  findings.push({
+    id:uid(),
+    ruleId:'FL_NO_PROGRESS_EXPLANATION',
+    severity:'blocker',
+    category:'florida_medicaid',
+    description:`El documento declara que el progreso fue nulo o limitado ("${signal[0]}"), y en ese caso la Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024, seccion 6.2.3) exige dos cosas que no se detectan: ${falta.join(' y ')}. Sin ambas, la solicitud de continuacion queda sin justificar.`,
+    matchedText:signal[0],
+    context:extractContext(text,signal.index,signal[0].length),
+    position:signal.index,
+    suggestedAction:'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 6.2.3: if significant clinical progress was not made over the authorization period, the provider must explain why clinically significant progress was not made AND state the treatment changes that will be made to promote progress. Add both, tied to the data for the behaviors that did not improve.',
+    status:'open',
+    createdAt:Date.now()
+  });
   return findings;
 }
 
@@ -3337,6 +3409,7 @@ H. Plan-compliance / say-do consistency [BACB Ethics Code 2020, Section 2.09 (ac
    - Fading / thinning: if the plan promises a fading schedule for prompts or a thinning schedule for reinforcement, the criteria for advancing each step must be documented.
    - Data review and protocol modification: if the plan promises weekly or biweekly data review by the BCBA, the document must reflect this in the supervision plan and the 97155 service schedule.
    - Reassessment-specific: in a reassessment document, the Progress Narrative must reference whether the supervisions, competency checks, IOA, and caregiver training PROMISED in the prior plan were actually delivered during the period. A plan that does not address fulfillment of its prior commitments is non-compliant. If the prior period's supervisions or competency checks are not documented as having occurred, flag as a blocker.
+   - Reassessment, lack of progress [Florida Medicaid Coverage Policy, December 2024, Section 6.2.3]: judge from the reported DATA whether clinically significant progress was actually made over the authorization period, even when the narrative does not say so. If the data show that a targeted behavior did not improve, stayed at baseline, or worsened, then the policy requires the document to (a) explain WHY clinically significant progress was not made and (b) state the TREATMENT CHANGES that will be made to promote progress. Flag as a blocker when the data indicate lack of progress and either of those two is missing. Do NOT flag when the narrative already states both. Note: a deterministic rule already covers the case where the document itself declares limited or no progress, so focus on the case where only the data reveal it.
    The principle: any commitment in the plan must be actionable, specific, and verifiable in the same document. Promises without operational details are non-compliant.
 
 

@@ -208,7 +208,7 @@ Todas citan Florida Medicaid, texto verificado.
 
 **R4 — Tabla y gráfico por conducta en reassessment (`FL_DATA_PER_BEHAVIOR`). ✅ IMPLEMENTADO** como `scanProgressDataPerBehavior`, por inspección del .docx original. `blocker`: cada conducta tratada necesita su propia tabla **y** su gráfico. *§6.2.3.*
 
-**R5 — Explicación de falta de progreso (`FL_NO_PROGRESS_EXPLANATION`).** Si el reassessment no evidencia progreso significativo, debe explicar por qué y qué cambia. *§6.2.3.*
+**R5 — Explicación de falta de progreso (`FL_NO_PROGRESS_EXPLANATION`). ✅ IMPLEMENTADO** como `scanNoProgressExplanation` más cobertura en el prompt conceptual para el caso de juicio. Si el reassessment no evidencia progreso significativo, debe explicar por qué y qué cambia. *§6.2.3.*
 
 **R6 — Servicios no cubiertos (`FL_NON_COVERED`).** Añadir a las reglas deterministas: reclusión y restricción manual/mecánica/química, 1:1 aide / shadow / companion, psicoterapia y testing psicológico, travel time, servicios simultáneos sin autorización. `blocker`. *§5.2.* **Nota clínica:** esto se solapa parcialmente con la lista de intervenciones prohibidas que ya existe, pero el fundamento es distinto — allí es "no es ABA", aquí es "Medicaid no lo paga". Conviene que el hallazgo lo diga.
 
