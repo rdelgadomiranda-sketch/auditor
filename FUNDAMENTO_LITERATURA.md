@@ -34,7 +34,7 @@ Riesgos: citas de sección no verificables; deriva silenciosa cuando las normas 
 
 ---
 
-## 2. ⚠️ Conflicto con el cambio de TBD de hoy — requiere tu decisión
+## 2. ✅ Conflicto de TBD — resuelto: exención estrechada
 
 El cambio que implementamos esta sesión exime de marcar los "TBD" de fechas y de conductas/reemplazos nuevos. La política de Florida Medicaid, §6.2.2, **exige literalmente**, para **cada** target, goal u objective:
 
@@ -52,7 +52,7 @@ Y repite **date of introduction** y **estimated date of mastery** para las metas
 
 Mi implementación actual clasifica como válido un TBD junto a `baseline`, `mastery`, `criteri`, `goal` u `objective` en un reassessment — es decir, **exime justo los campos que la norma exige**. Un revisor del QIO puede denegar por eso.
 
-**Recomendación:** estrechar la exención a fechas de **servicio/autorización** y **volver a marcar** el TBD en campos de meta. Dos líneas de `classifyTbdContext` y los patrones `TBD_NEW_TARGET_CONTEXT`. No lo he tocado: es tu decisión clínica y tú conoces cómo lo reciben los revisores en la práctica. *Fuente: FL Medicaid §6.2.2, p. 7–8.* **[P]**
+**Resuelto** (aprobado por Rolando): la exención se estrechó a fechas de **servicio y autorización**. Los campos de meta de §6.2.2 vuelven a marcarse, ahora como `FL_GOAL_ELEMENT_TBD` — `blocker` de categoría `florida_medicaid` que cita la sección y explica que la norma pide un valor estimado. Se eliminó por completo la vía de exención por "conducta o reemplazo nuevo". *Fuente: FL Medicaid §6.2.2, p. 7–8.* **[P]**
 
 ---
 
