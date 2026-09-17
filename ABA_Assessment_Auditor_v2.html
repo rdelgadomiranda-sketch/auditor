@@ -1778,6 +1778,10 @@ async function runAudit(){
     findings=findings.concat(scanProceduralFidelity(text,state.currentDoc.docType));
     findings=findings.concat(scanAssessmentDomains(text,state.currentDoc.docType));
     findings=findings.concat(scanGoalsNotDsmCriteria(text,state.currentDoc.docType));
+    findings=findings.concat(scanClientAssent(text,state.currentDoc.docType));
+    findings=findings.concat(scanGoalAssessmentLink(text,state.currentDoc.docType));
+    findings=findings.concat(scanAssessmentLimitations(text,state.currentDoc.docType));
+    findings=findings.concat(scanEcobehavioralBarriers(text,state.currentDoc.docType));
     findings=findings.concat(scanAgeConsistency(text));
     findings=findings.concat(scanCommunicationCongruence(text));
     findings=findings.concat(scanSTOIntegrity(text));
@@ -2596,6 +2600,127 @@ function scanGoalsNotDsmCriteria(text,docType){
     context:extractContext(text,hits[0].index,hits[0].match.length),
     position:hits[0].index,
     suggestedAction:'Per the CASP/APBA ASD Assessment Guidelines for Behavior Analysts (March 2026, Chapter 5), diagnostic criteria must not be used as a checklist of treatment targets. Rewrite each goal as an observable, measurable behavior tied to an outcome that matters to this client and their support system in a specific routine or setting, rather than restating the DSM-5 criterion the client meets.',
+    status:'open',
+    createdAt:Date.now()
+  });
+  return findings;
+}
+
+// CASP/APBA, cap. 2, Key Points, p. 18: "Informed consent, INCLUDING ASSENT
+// FROM THE CLIENT BEING ASSESSED, must be obtained, with all stakeholders
+// clearly understanding the purpose, procedures, and potential risks of the
+// assessment."
+//
+// El assent es del CLIENTE y es distinto del consentimiento del tutor, que ya
+// comprueban SEC_CONSENT y la regla de firmas de 6.2.2. Esta regla no se da por
+// satisfecha con el consentimiento del tutor y se lo dice al analista.
+const FL_ASSENT_RE=/\bassent\b|\bassent[-\s](?:based|withdrawal)\b|\bwithdrawal\s+of\s+assent\b|\bdissent\b|\bsigns?\s+of\s+(?:assent|willingness)\b|\basentimiento\b|\bdisentimiento\b/i;
+const FL_GUARDIAN_CONSENT_RE=/\b(?:informed\s+)?consent\b|\bconsentimiento\b/i;
+
+function scanClientAssent(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+  if(FL_ASSENT_RE.test(text))return findings;
+  const hayConsent=FL_GUARDIAN_CONSENT_RE.test(text);
+  findings.push({
+    id:uid(),
+    ruleId:'SEC_ASSENT',
+    severity:'warning',
+    category:'completeness',
+    description:`No se detecta el ASSENT del cliente. Las guias CASP/APBA (marzo 2026, cap. 2) exigen obtener el consentimiento informado "incluyendo el assent del cliente que esta siendo evaluado", con todos los interesados comprendiendo el proposito, los procedimientos y los riesgos potenciales.${hayConsent?' El documento SI recoge consentimiento, pero ese es el del tutor: el assent es del propio cliente y es un requisito distinto.':''} Documentar como se busco el assent, que senales se tomaron como asentimiento o disentimiento, y que se hizo si el cliente lo retiro.`,
+    suggestedAction:'Per the CASP/APBA ASD Assessment Guidelines for Behavior Analysts (March 2026, Chapter 2), informed consent must include assent from the client being assessed. Document how assent was sought in a way the client can understand, what behaviors were treated as assent and as assent withdrawal, and how the team responds when the client withdraws assent. Guardian consent does not substitute for client assent.',
+    suggestedRewrite:'Client assent: assent was sought from the client before each assessment session using language and materials matched to the client’s communication repertoire. Assent was recorded as present when the client approached and engaged with the materials, and assent withdrawal was recorded when the client moved away, pushed materials away, or protested. When assent was withdrawn, the session was paused and resumed only after the client re-engaged; persistent withdrawal was documented and the procedure was reconsidered with the caregiver.',
+    status:'open',
+    createdAt:Date.now()
+  });
+  return findings;
+}
+
+// CASP/APBA, cap. 6, p. 59: "A practitioner should DIRECTLY LINK the information
+// gathered from the assessment to protocol design and the RATIONALE FOR
+// TARGETING SPECIFIC BEHAVIORS for treatment."
+//
+// Solo actua cuando el documento tiene metas Y nombra procedimientos de
+// evaluacion: sin ambas cosas no hay vinculo que exigir.
+const FL_GOAL_LINK_RE=/\bbased\s+on\s+(?:the\s+)?(?:results?|findings?|data|assessment|scores?)\b|\b(?:results?|findings?|scores?)\s+(?:of|from)\s+the\s+(?:assessment|evaluation)\b[^.\n]{0,80}\b(?:indicate|suggest|support|inform|guided)\b|\binformed\s+by\s+the\s+(?:assessment|evaluation|results?)\b|\bderived\s+from\s+the\s+(?:assessment|evaluation|results?)\b|\bidentified\s+(?:through|during)\s+the\s+(?:assessment|evaluation|observation)\b|\brationale\s+for\s+(?:targeting|selecting)\b|\b(?:goals?|targets?|objectives?)\s+(?:were\s+|was\s+)?(?:selected|chosen|prioritized)\s+(?:based\s+on|because|after)\b|\bthese\s+(?:results?|findings?)\s+(?:led\s+to|support|inform)\b|\ben\s+base\s+a\s+(?:los\s+)?(?:resultados|hallazgos)\b|\bderivad[oa]s?\s+de\s+la\s+evaluaci[óo]n\b|\bjustificaci[óo]n\s+para\s+(?:seleccionar|priorizar)\b/i;
+const FL_ASSESSMENT_NAMED_RE=/\bassessment\s+(?:procedures?|results?|findings?|tools?)\b|\bVineland\b|\bBASC\b|\bABLLS\b|\bVB-?MAPP\b|\bAFLS\b|\bPEAK\b|\bpreference\s+assessment\b|\bfunctional\s+(?:behavior\s+)?assessment\b|\bABC\s+(?:data|observation)\b|\bdirect\s+observation\b|\bevaluaci[óo]n\s+(?:funcional|de\s+preferencias)\b/i;
+
+function scanGoalAssessmentLink(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+  if(!FL_HAS_GOALS_RE.test(text))return findings;
+  if(!FL_ASSESSMENT_NAMED_RE.test(text))return findings;
+  if(FL_GOAL_LINK_RE.test(text))return findings;
+  findings.push({
+    id:uid(),
+    ruleId:'GOAL_ASSESSMENT_LINK',
+    severity:'warning',
+    category:'goal_quality',
+    description:'El documento nombra procedimientos de evaluacion y plantea metas, pero no se detecta el VINCULO explicito entre unos y otras: por que estas conductas y no otras. Las guias CASP/APBA (marzo 2026, cap. 6) piden vincular directamente la informacion recogida en la evaluacion con el diseno del protocolo y con la justificacion de por que se eligieron esas conductas como objetivo. Sin ese vinculo, un revisor no puede distinguir una meta derivada de los datos de una meta elegida por costumbre.',
+    suggestedAction:'Per the CASP/APBA ASD Assessment Guidelines for Behavior Analysts (March 2026, Chapter 6), directly link the assessment information to protocol design and to the rationale for targeting each specific behavior. For each goal, state which assessment result it came from (for example, the Vineland domain score, the preference assessment, or the direct observation data) and why that target was prioritized over others for this client.',
+    status:'open',
+    createdAt:Date.now()
+  });
+  return findings;
+}
+
+// CASP/APBA, cap. 3, Key Points, p. 40 y cap. 6, Key Points, p. 61: "Clear
+// documentation of ASSESSMENT LIMITATIONS AND CLINICAL RATIONALE is essential to
+// ensure ethical, transparent, and individualized assessment practices."
+// Caso explicito de la fuente: cuando el FINANCIADOR exige un instrumento que no
+// captura bien las necesidades del cliente, el analista debe comunicar las
+// limitaciones del resultado y justificar medidas alternativas. En Florida esto
+// aplica de lleno, porque 4.2.1 impone el Vineland-3 y el BASC-3 PRQ.
+const FL_LIMITATIONS_RE=/\blimitations?\s+(?:of|to)\s+(?:the\s+)?(?:assessment|instrument|tool|measure|results?|findings?)\b|\bassessment\s+limitations?\b|\binterpret(?:ed)?\s+with\s+caution\b|\bcaution\s+(?:is\s+)?(?:warranted|advised)\b|\bnot\s+normed\s+for\b|\bnorms?\s+(?:do|does)\s+not\b|\bmay\s+(?:not\s+fully\s+)?(?:capture|reflect)\b|\bclinical\s+rationale\s+for\s+(?:selecting|choosing|the\s+selection)\b|\bcaveat\b|\blimitaciones?\s+(?:del?\s+)?(?:instrumento|la\s+evaluaci[óo]n|los\s+resultados)\b|\binterpretar(?:se)?\s+con\s+cautela\b/i;
+const FL_STANDARDIZED_NAMED_RE=/\bVineland\b|\bBASC\b|\bABAS\b|\bADOS\b|\bCARS\b|\bSRS\b|\bGARS\b|\bPDDBI\b|\bVB-?MAPP\b|\bABLLS\b|\bAFLS\b|\bPEAK\b|\bstandardi[sz]ed\s+(?:assessment|measure|instrument|tool)\b/i;
+
+function scanAssessmentLimitations(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+  if(!FL_STANDARDIZED_NAMED_RE.test(text))return findings;   // sin instrumento, nada que limitar
+  if(FL_LIMITATIONS_RE.test(text))return findings;
+  findings.push({
+    id:uid(),
+    ruleId:'ASSESSMENT_LIMITATIONS',
+    severity:'warning',
+    category:'completeness',
+    description:'El documento administra instrumentos estandarizados pero no documenta sus LIMITACIONES ni la justificacion clinica de haberlos elegido. Las guias CASP/APBA (marzo 2026, cap. 3 y 6) consideran esa documentacion esencial para una practica etica, transparente e individualizada, y senalan el caso concreto en que la fuente de financiamiento EXIGE un instrumento que no captura bien las necesidades del cliente: entonces el analista debe comunicar las limitaciones del resultado y justificar medidas alternativas mas apropiadas. En Florida esto aplica de lleno, porque la seccion 4.2.1 impone el Vineland-3 y el BASC-3 PRQ con independencia de si son los que mejor reflejan a este cliente.',
+    suggestedAction:'Per the CASP/APBA ASD Assessment Guidelines for Behavior Analysts (March 2026, Chapters 3 and 6), document the limitations of each standardized instrument administered and the clinical rationale for selecting it. Where a funder-required instrument does not adequately capture this client’s needs, state that limitation explicitly and justify any supplemental or alternative measures used alongside it.',
+    suggestedRewrite:'Assessment limitations: the standardized instruments administered were selected in part to meet payer requirements. Their norms and item content may not fully capture this client’s presentation, particularly [state the specific mismatch: communication modality, age band, co-occurring condition]. To address this, the following supplemental measures were administered and are reported alongside the standardized scores: [list]. Scores should be interpreted with these limitations in mind and in conjunction with the direct observation data reported below.',
+    status:'open',
+    createdAt:Date.now()
+  });
+  return findings;
+}
+
+// CASP/APBA, cap. 3, p. 38 y Apendice B: el analisis ecoconductual examina las
+// FORTALEZAS Y BARRERAS AMBIENTALES que influyen en la conducta, recogidas por
+// observacion directa, entrevistas al cuidador e instrumentos de calidad de
+// vida. Componente central: los determinantes sociales de la salud, que segun
+// la OMS explican entre el 30 y el 55 % de los resultados en salud. Ejemplo de
+// la propia fuente: un nino con ausentismo escolar cronico no se beneficiara de
+// una intervencion basada en centro salvo que se aborden las barreras de
+// asistencia.
+//
+// Va como NOTICE de apoyo: es un factor de individualizacion y de viabilidad
+// del plan, no un requisito de cobertura.
+const FL_ECOBEHAVIORAL_RE=/\bbarriers?\b|\bsocial\s+determinants?\s+of\s+health\b|\bSDOH\b|\becobehavio(?:u)?ral\b|\btransportation\b|\bhousing\b|\bfood\s+insecurity\b|\b(?:school\s+)?(?:absenteeism|attendance)\b|\bcaregiver\s+(?:stress|burden|burnout)\b|\bfinancial\s+(?:strain|hardship|constraints?)\b|\baccess\s+to\s+(?:care|services|resources|transportation)\b|\bwork\s+schedule\b|\bcommunity\s+resources?\b|\benvironmental\s+(?:strengths?|constraints?|factors?)\b|\bbarreras?\b|\bdeterminantes\s+sociales\b|\btransporte\b|\bestr[ée]s\s+del\s+cuidador\b|\bausentismo\b/i;
+
+function scanEcobehavioralBarriers(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+  if(FL_ECOBEHAVIORAL_RE.test(text))return findings;
+  findings.push({
+    id:uid(),
+    ruleId:'ECOBEHAVIORAL_BARRIERS',
+    severity:'notice',
+    category:'writing_quality',
+    description:'No se detectan fortalezas ni barreras ambientales que puedan condicionar la viabilidad del plan: asistencia, transporte, horario laboral del cuidador, estres familiar, acceso a recursos. Las guias CASP/APBA (marzo 2026, cap. 3 y Apendice B) incorporan el analisis ecoconductual y los determinantes sociales de la salud, que segun la OMS explican entre el 30 y el 55 % de los resultados en salud. El propio documento lo ilustra asi: un nino con ausentismo escolar cronico no se beneficiara de una intervencion basada en centro salvo que se aborden antes las barreras de asistencia. No es un requisito de cobertura, pero documentarlo individualiza el plan y anticipa por que podria no funcionar.',
+    suggestedAction:'Optional but recommended. Per the CASP/APBA ASD Assessment Guidelines for Behavior Analysts (March 2026, Chapter 3 and Appendix B), document the environmental strengths and barriers that may affect participation and outcomes for this client — attendance, transportation, caregiver work schedules, family stress, access to community resources — and state how the plan accounts for them.',
     status:'open',
     createdAt:Date.now()
   });

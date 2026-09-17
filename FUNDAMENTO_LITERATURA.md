@@ -226,17 +226,17 @@ Todas citan Florida Medicaid, texto verificado.
 
 **R12 — Cuatro dominios de evaluación (`SEC_ASSESSMENT_DOMAINS`). ✅ IMPLEMENTADO** como `scanAssessmentDomains`. Los dos primeros suelen estar; calidad de vida y condiciones co-ocurrentes casi nunca. *CASP cap. 5, p. 54.*
 
-**R13 — Assent del cliente (`SEC_ASSENT`).** Separado del consentimiento del tutor. *CASP cap. 2, p. 18.*
+**R13 — Assent del cliente (`SEC_ASSENT`). ✅ IMPLEMENTADO** como `scanClientAssent`. Separado del consentimiento del tutor. *CASP cap. 2, p. 18.*
 
 **R14 — Metas que reproducen criterios diagnósticos (`GOALS_NOT_DSM_CRITERIA`). ✅ IMPLEMENTADO** como `scanGoalsNotDsmCriteria`. *CASP cap. 5, p. 54.*
 
-**R15 — Vínculo evaluación → meta (`GOAL_ASSESSMENT_LINK`).** *CASP cap. 6, p. 59.*
+**R15 — Vínculo evaluación → meta (`GOAL_ASSESSMENT_LINK`). ✅ IMPLEMENTADO** como `scanGoalAssessmentLink`. *CASP cap. 6, p. 59.*
 
-**R16 — Limitaciones del instrumento (`ASSESSMENT_LIMITATIONS`).** Especialmente pertinente en Florida, donde el financiador impone Vineland-3 y BASC-3. *CASP cap. 3, p. 40.*
+**R16 — Limitaciones del instrumento (`ASSESSMENT_LIMITATIONS`). ✅ IMPLEMENTADO** como `scanAssessmentLimitations`. Especialmente pertinente en Florida, donde el financiador impone Vineland-3 y BASC-3. *CASP cap. 3, p. 40.*
 
 **R20 — Coherencia alcance ↔ intensidad (`scanScopeIntensityCoherence`). ✅ IMPLEMENTADO.** Desciende de la recomendación de "justificación de la dosis" de la primera versión de este documento, que quedó sin número al reescribirlo con Florida Medicaid como ancla. Toma la forma de coherencia entre alcance e intensidad, no de un rango fijo de horas, que es lo que la evidencia sostiene. Rangos ya **verificados contra la fuente primaria**: comprehensivo de alta intensidad 30–40 h/sem durante al menos dos años; focalizado de alcance estrecho 6–15 h/sem; focalizado sobre conducta grave 25–40 h/sem; comprehensivo de baja intensidad, apropiado en pocos casos. Usa horas de tratamiento **directo**, no el total de R9. Todo `warning`. *CASP, Evidence About ABA Treatment for Young Children with Autism, p. 11–13.* **[P]**
 
-**R17 — Barreras ambientales / SDOH (`ECOBEHAVIORAL_BARRIERS`).** `notice` de apoyo. *CASP cap. 3, p. 38; Apéndice B.*
+**R17 — Barreras ambientales / SDOH (`ECOBEHAVIORAL_BARRIERS`). ✅ IMPLEMENTADO** como `scanEcobehavioralBarriers`. `notice` de apoyo. *CASP cap. 3, p. 38; Apéndice B.*
 
 ### Bloque C — estructural
 
