@@ -1819,6 +1819,10 @@ async function runAudit(){
       // enriquece la descripcion con el numero de metas.
       findings=findings.concat(scanGoalRequiredElements(text,state.currentDoc.docType,state.currentDoc.canonical));
 
+      // CASP/APBA cap. 3: la observacion directa es primaria, lo indirecto
+      // solo suplementa. Usa el canonico para el detalle por conducta.
+      findings=findings.concat(scanFunctionEvidenceSource(text,state.currentDoc.docType,state.currentDoc.canonical));
+
       const docSizeKB=Math.round(state.currentDoc.text.length/1024);
       setProg(82,`Running deep clinical & regulatory audit on full document (${docSizeKB} KB)... this can take 20-60 seconds`);
       try{
@@ -2492,6 +2496,80 @@ function scanCoreInstruments(text,docType,client){
     add('FL_CORE_SCORING_REPORT','warning',
       'Se nombran instrumentos estandarizados pero no se detectan puntuaciones reportadas. La secci\u00f3n 4.2.1 exige que el reporte completo de puntuaci\u00f3n, incluidas las outcome measure scores, se presente con la solicitud de autorizaci\u00f3n.',
       'Include the complete scoring report with outcome measure scores (standard scores, percentiles, composites) for each core instrument, as required by Florida Medicaid Coverage Policy Section 4.2.1 for prior authorization requests.');
+  }
+  return findings;
+}
+
+// CASP/APBA, ASD Assessment Guidelines for Behavior Analysts (marzo 2026),
+// cap. 3, p. 22: "practitioners should prioritize the use of DIRECT OBSERVATION
+// and measurement - the heart of ABA. This may involve conducting a functional
+// analysis of an interfering behavior to hypothesize the function. INDIRECT
+// MEASURES SUPPLEMENT DIRECT MEASURES."
+//
+// Consecuencia auditable: una funcion sostenida SOLO en un FAST, un MAS o una
+// entrevista no cumple el estandar. Lo indirecto aporta prioridades del cliente
+// y del cuidador, pero no sustituye la medicion directa.
+//
+// DISENO. La afirmacion a nivel de DOCUMENTO es la fiable y es la que sostiene
+// el hallazgo: si no se nombra ningun metodo directo en ninguna parte, entonces
+// ninguna conducta lo tiene. Localizar que metodo corresponde a cada conducta
+// dentro del texto plano es fragil, asi que el detalle POR CONDUCTA se toma del
+// canonico y se presenta como tal. El enum de functionSource se amplio para que
+// pueda expresar evidencia directa; los canonicos cacheados de antes solo
+// conocen valores indirectos, por eso la clasificacion primaria es por texto y
+// no depende de re-extraer.
+const FL_DIRECT_EVIDENCE_RE=/\bfunctional\s+analys[ei]s\b|\b(?:brief|trial[-\s]based|latency[-\s]based)\s+functional\s+analysis\b|\bF\.?A\.?\s+(?:was|were)\s+conducted\b|\bdescriptive\s+(?:assessment|analysis)\b|\bA-?B-?C\s+(?:data|recording|observation|analysis)\b|\bantecedent[-\s]behavio(?:u)?r[-\s]consequence\b|\bdirect\s+observation\b|\bscatter\s?plot\b|\bin[-\s]vivo\s+observation\b|\bobserved\s+(?:the\s+)?(?:client|recipient|child)\s+(?:across|during|in)\b|\bobservaci[\u00f3o]n\s+directa\b|\ban[\u00e1a]lisis\s+funcional\b|\bregistro\s+ABC\b/i;
+const FL_INDIRECT_EVIDENCE_RE=/\bFAST\b|\bfunctional\s+analysis\s+screening\s+tool\b|\bMAS\b|\bmotivation\s+assessment\s+scale\b|\bQABF\b|\bfunctional\s+assessment\s+interview\b|\bFAI\b|\bFACTS\b|\b(?:caregiver|parent|teacher|staff)\s+interview\b|\brating\s+scale\b|\bquestionnaire\b|\bindirect\s+(?:assessment|measure)\b|\bentrevista\s+funcional\b|\bescala\s+de\s+valoraci[\u00f3o]n\b/i;
+// Valores del canonico que NO acreditan una fuente para la funcion.
+const FL_WEAK_FUNCTION_SOURCES=/^(?:unstated|stated_without_source|functional_hypothesis|)$/i;
+
+function scanFunctionEvidenceSource(text,docType,canonical){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+  const behaviors=(canonical&&Array.isArray(canonical.behaviors))?canonical.behaviors.filter(b=>b&&b.name):[];
+  // Sin conductas y sin hipotesis de funcion, no hay nada que sostener.
+  if(!behaviors.length&&!/\bfunction(?:al)?\s+(?:hypothes[ie]s|of\s+(?:the\s+)?behavio)/i.test(text))return findings;
+
+  const hasDirect=FL_DIRECT_EVIDENCE_RE.test(text);
+  const hasIndirect=FL_INDIRECT_EVIDENCE_RE.test(text);
+  const lower=text.toLowerCase();
+  const peligrosas=behaviors.map(b=>b.name).filter(n=>{
+    const nl=String(n).toLowerCase();
+    return DANGEROUS_BEHAVIORS.some(d=>nl.includes(d));
+  });
+  // Si no hay canonico, se busca la conducta peligrosa en el texto.
+  const hayPeligrosa=peligrosas.length>0||
+    (!behaviors.length&&DANGEROUS_BEHAVIORS.some(d=>lower.includes(d)));
+  const listaPeligrosas=peligrosas.length?` Conductas peligrosas detectadas: ${peligrosas.join(', ')}.`:'';
+  const add=(ruleId,severity,description,suggestedAction)=>findings.push({
+    id:uid(),ruleId,severity,category:'clinical_safety',description,suggestedAction,
+    status:'open',createdAt:Date.now()
+  });
+  const ACTION='Per the CASP/APBA ASD Assessment Guidelines for Behavior Analysts (March 2026, Chapter 3), practitioners must prioritize direct observation and measurement, and indirect measures only supplement them. Name the direct method used to establish each behavior\u2019s function \u2014 ABC direct observation, descriptive assessment, or a functional analysis \u2014 and report its data. For behaviors that pose a safety risk, a function resting only on a rating scale or interview is not sufficient to justify the intervention selected.';
+
+  if(!hasDirect&&!hasIndirect){
+    add('FUNCTION_EVIDENCE_SOURCE','warning',
+      `El documento no nombra ningun metodo por el que se haya establecido la funcion de las conductas: ni observacion directa, analisis funcional o evaluacion descriptiva, ni instrumento indirecto (FAST, MAS, QABF, entrevista). Sin el metodo, la hipotesis funcional no es verificable y todo el plan de intervencion descansa sobre ella.${listaPeligrosas}`,
+      ACTION);
+  }else if(!hasDirect){
+    // Lo indirecto solo suplementa: sin ningun metodo directo, la funcion no
+    // cumple el estandar. Con conductas peligrosas, el riesgo es clinico.
+    add('FUNCTION_EVIDENCE_SOURCE',hayPeligrosa?'blocker':'warning',
+      `La funcion de las conductas se sostiene unicamente en evidencia INDIRECTA (escalas o entrevistas): no se detecta ningun metodo de medicion directa en el documento. Las guias CASP/APBA (marzo 2026, cap. 3) establecen que la observacion directa es primaria y que las medidas indirectas solo la SUPLEMENTAN.${hayPeligrosa?' Con conductas que implican riesgo de seguridad esto es especialmente grave, porque la intervencion seleccionada depende de una funcion no verificada directamente.':''}${listaPeligrosas}`,
+      ACTION);
+  }
+
+  // Detalle por conducta, desde el canonico y presentado como tal.
+  if(behaviors.length){
+    const sinFuente=behaviors
+      .filter(b=>FL_WEAK_FUNCTION_SOURCES.test(String(b.functionSource||'').trim()))
+      .map(b=>b.name);
+    if(sinFuente.length){
+      add('FUNCTION_EVIDENCE_SOURCE_PER_BEHAVIOR','warning',
+        `Segun la estructura clinica extraida del documento, ${sinFuente.length===1?'esta conducta declara su funcion sin nombrar el metodo que la establecio':'estas conductas declaran su funcion sin nombrar el metodo que la establecio'}: ${sinFuente.join(', ')}. Nombrar el metodo por conducta permite que un revisor verifique la hipotesis en lugar de aceptarla. Nota: este detalle procede de la extraccion automatica del documento; si el metodo figura junto a la conducta con otra redaccion, marque el hallazgo como falso positivo.`,
+        ACTION);
+    }
   }
   return findings;
 }
@@ -4177,7 +4255,7 @@ Extract into this exact JSON schema:
       "name": "the target/maladaptive behavior name",
       "topography": "the observable description as written, or null",
       "function": "escape | attention | tangible | automatic | multiple | unstated",
-      "functionSource": "FAST | MAS | functional_hypothesis | stated_without_source | unstated",
+      "functionSource": "functional_analysis | ABC_direct_observation | descriptive_assessment | FAST | MAS | QABF | interview | functional_hypothesis | stated_without_source | unstated \u2014 name the METHOD that established the function; use the direct-evidence values (functional_analysis, ABC_direct_observation, descriptive_assessment) whenever the document reports direct observation, and reserve the indirect ones for rating scales and interviews",
       "replacements": [
         {
           "name": "the replacement/alternative/acquisition behavior paired with this behavior",

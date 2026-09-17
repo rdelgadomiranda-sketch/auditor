@@ -220,7 +220,7 @@ Todas citan Florida Medicaid, texto verificado.
 
 ### Bloque B — calidad clínica, con cita verificable
 
-**R10 — Fuente de la evidencia funcional (`FUNCTION_EVIDENCE_SOURCE`).** Exigir que se nombre el método; `blocker` en conductas peligrosas si solo hay evidencia indirecta. El canónico ya extrae `functionSource`. *CASP cap. 3, p. 22.*
+**R10 — Fuente de la evidencia funcional (`FUNCTION_EVIDENCE_SOURCE`). ✅ IMPLEMENTADO** como `scanFunctionEvidenceSource`. Exigir que se nombre el método; `blocker` en conductas peligrosas si solo hay evidencia indirecta. El canónico ya extrae `functionSource`. *CASP cap. 3, p. 22.*
 
 **R11 — Fidelidad procedimental distinta del IOA (`PROCEDURAL_FIDELITY`).** Requisito propio; que no se dé por satisfecho con una mención de IOA. *CASP cap. 4, p. 43.*
 
