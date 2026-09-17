@@ -123,6 +123,16 @@ Es un **indicador de avance** (sube al atender hallazgos), no una calificación 
 
 ---
 
+### Practice Parameters de IA (CASP/APBA) — gobiernan al auditor, no a los documentos
+
+Tres exigencias implementadas sobre la herramienta misma:
+
+- **Trazabilidad** (`AUDITOR_RULES_VERSION`, `auditTraceLine`, `audit.engine`): *"transparency… provides a pathway for **tracing errors to their source**"*. Cada auditoría se sella con **versión de reglas + modelo + fecha**, y el reporte lo muestra en lugar del antiguo "Versión del motor: 1.0", que era fijo e inútil. **Incrementar `AUDITOR_RULES_VERSION` al cambiar cualquier regla clínica o regulatoria**, o los hallazgos archivados dejan de ser rastreables.
+- **Alcance del aviso de IA** (`summarizeAiScope`): *"disclose the **extent** to which AI is being used… offer **non-AI alternatives** as an opt-out"*. El aviso del reporte ya no dice solo "asistida por IA": declara **cuántos hallazgos son deterministas y cuántos vienen de IA**, y nombra la revisión del BCBA como **la vía sin IA** sin la cual no se aplica ningún hallazgo.
+- **Canal de reporte de errores** (`reportFindingError`): *"a clear, accessible reporting mechanism enables providers to flag concerns"*. Botón por hallazgo que descarga un JSON estructurado con regla, severidad, si vino de IA, contexto, versión y modelo, más dos campos que el analista rellena. **Distinción clave que el botón explica**: marcar falso positivo solo oculta el hallazgo *en ese documento*; el reporte es lo que permite corregir **la regla**. Usa `alert` y no `showMsg`, porque no hay contenedor de mensajes en esa pestaña y `showMsg` falla en silencio.
+
+---
+
 ## 7. Invariantes de diseño (romperlos = regresión)
 
 1. **La crítica anota, nunca descarta.** Ningún hallazgo cambia de status sin decisión del analista.

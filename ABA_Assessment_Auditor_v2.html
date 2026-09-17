@@ -1723,6 +1723,7 @@ function renderAuditView(){
 
 async function runAudit(){
   if(!state.currentDoc)return;
+  const _auditStartedAt=Date.now();
   
   const progress=document.getElementById('auditProgress');
   const fill=document.getElementById('auditProgressFill');
@@ -2095,7 +2096,10 @@ async function runAudit(){
       id:uid(),
       docId:state.currentDoc.id,
       findings,
-      auditedAt:Date.now()
+      auditedAt:Date.now(),
+      // Trazabilidad exigida por los Practice Parameters de IA: sin la version
+      // de reglas, un hallazgo archivado no se puede rastrear hasta su origen.
+      engine:{rulesVersion:AUDITOR_RULES_VERSION,startedAt:_auditStartedAt||Date.now()}
     };
     state.currentAudit.usage=summarizeUsage(state.usageLog); // per-pass API cost snapshot
 
@@ -2614,6 +2618,45 @@ function scanGoalsNotDsmCriteria(text,docType){
 // El assent es del CLIENTE y es distinto del consentimiento del tutor, que ya
 // comprueban SEC_CONSENT y la regla de firmas de 6.2.2. Esta regla no se da por
 // satisfecha con el consentimiento del tutor y se lo dice al analista.
+/* Practice Parameters for Artificial Intelligence Use in Applied Behavior
+   Analysis (CASP/APBA) - tres exigencias que gobiernan a ESTA herramienta, no a
+   los documentos que audita:
+
+   TRANSPARENCIA Y TRAZABILIDAD. "Careful, ongoing oversight of the AI systems
+   enables continuous improvement (e.g., testing, auditing, and debugging)...
+   This also provides a PATHWAY FOR TRACING ERRORS TO THEIR SOURCE." Sin saber
+   con que modelo y con que version de reglas se produjo un hallazgo, no hay
+   forma de rastrear un error hasta su origen ni de auditar el auditor.
+
+   CONSENTIMIENTO INFORMADO. "An organization should be prepared to DISCLOSE THE
+   EXTENT to which AI is being used, its risks and benefits, and its adverse
+   effects... When possible, the organization should IDENTIFY AND OFFER NON-AI
+   ALTERNATIVES to clients and families as an opt-out option."
+
+   REPORTE DE ERRORES. "A clear, accessible reporting mechanism enables
+   providers... to flag concerns... Error reports may include instances of
+   incorrect data interpretation, biased recommendations, or system failures."
+
+   AUDITOR_RULES_VERSION se incrementa cada vez que cambia una regla clinica o
+   regulatoria, para que un hallazgo archivado siga siendo rastreable. */
+const AUDITOR_RULES_VERSION='2026.09.17-1';
+
+// Desglose del alcance de la IA sobre los hallazgos de una auditoria: cuales
+// vienen de reglas deterministas (regex, sin IA) y cuales de una pasada de IA.
+function summarizeAiScope(findings){
+  const real=(findings||[]).filter(f=>f&&f.category!=='system');
+  const ai=real.filter(f=>f.aiGenerated).length;
+  return {total:real.length, ai, deterministic:real.length-ai};
+}
+
+// Sello de trazabilidad de una auditoria, en texto plano reutilizable.
+function auditTraceLine(audit){
+  const v=(audit&&audit.engine&&audit.engine.rulesVersion)||AUDITOR_RULES_VERSION;
+  const model=(audit&&audit.usage&&audit.usage.model)||(audit&&audit.engine&&audit.engine.model)||'sin pasadas de IA';
+  const when=new Date((audit&&audit.auditedAt)||Date.now()).toLocaleString('es');
+  return `Version de reglas ${v} \u00b7 Modelo ${model} \u00b7 Ejecutada ${when}`;
+}
+
 const FL_ASSENT_RE=/\bassent\b|\bassent[-\s](?:based|withdrawal)\b|\bwithdrawal\s+of\s+assent\b|\bdissent\b|\bsigns?\s+of\s+(?:assent|willingness)\b|\basentimiento\b|\bdisentimiento\b/i;
 const FL_GUARDIAN_CONSENT_RE=/\b(?:informed\s+)?consent\b|\bconsentimiento\b/i;
 
@@ -5297,7 +5340,8 @@ function renderFinding(f){
     buttons=`
       <button class="btn btn-secondary btn-small" onclick="resolveFinding('${f.id}','resolved')" title="Marca que YA hiciste la corrección en el assessment original. Este botón no modifica el assessment; solo cambia el estado del hallazgo aquí.">Ya corregí esto</button>
       <button class="btn btn-secondary btn-small" onclick="resolveFinding('${f.id}','accepted_with_justification')" title="Mantén el texto tal cual en el assessment, pero registra una justificación clínica que aparecerá en el reporte exportado. No modifica el assessment original.">Mantener con justificación</button>
-      <button class="btn btn-secondary btn-small" onclick="resolveFinding('${f.id}','false_positive')" title="El sistema marcó esto por error. Lo descarta del reporte.">Falso positivo</button>`;
+      <button class="btn btn-secondary btn-small" onclick="resolveFinding('${f.id}','false_positive')" title="El sistema marcó esto por error. Lo descarta del reporte.">Falso positivo</button>
+      <button class="btn btn-secondary btn-small" onclick="reportFindingError('${f.id}')" title="Descarga un reporte estructurado de este hallazgo (regla, versión, modelo, contexto) para enviarlo a quien mantiene el auditor. Descartarlo como falso positivo solo lo oculta aquí; esto deja constancia para corregir la regla." style="border-color:#8D6E63;color:#8D6E63">Reportar error</button>`;
   }else{
     buttons=`<button class="btn btn-secondary btn-small" onclick="resolveFinding('${f.id}','open')" title="Volver a marcar como pendiente">Reabrir</button>`;
   }
@@ -6011,6 +6055,9 @@ function groupFindingsForDisplay(list){
 
 function buildReportHTML(client,doc,audit,consultantName,consultantCreds,closing){
   const findings=audit.findings;
+  // Alcance del uso de IA, exigido por los Practice Parameters: el reporte
+  // declara cuantos hallazgos son deterministas y cuantos vienen de la IA.
+  const _aiScope=summarizeAiScope(findings);
   const open={blocker:0,warning:0,notice:0};
   for(const f of findings){if(f.status==='open')open[f.severity]=(open[f.severity]||0)+1}
   const total=findings.length;
@@ -6228,10 +6275,10 @@ function buildReportHTML(client,doc,audit,consultantName,consultantCreds,closing
     <p class="meta-line">Documento auditado: ${escapeHtml(doc.filename)}</p>
     <p class="meta-line">Tipo de documento: ${escapeHtml(doc.docType||'sin clasificar')}</p>
     <p class="meta-line">Referencia del cliente: ${escapeHtml(client.clientCode)} ${client.agency?'· '+escapeHtml(client.agency):''}</p>
-    <p class="meta-line">Versión del motor de auditoría: 1.0</p>
+    <p class="meta-line">Trazabilidad: ${escapeHtml(auditTraceLine(audit))}</p>
     
     <div style="border:1px solid #90A4AE;background:#ECEFF1;border-radius:5px;padding:9px 14px;margin:10px 0 14px">
-      <p style="margin:0;font-size:12px;color:#37474F"><strong>Aviso:</strong> esta auditoría fue generada con asistencia de inteligencia artificial. Los hallazgos, sugerencias y rediseños son orientativos y pueden contener errores u omisiones. El analista conductual certificado (BCBA) es responsable de verificar cada señalamiento contra el documento original y los datos clínicos (FAST/MAS, líneas base) antes de aplicar cualquier cambio. Ningún contenido de este reporte sustituye el juicio clínico profesional.</p>
+      <p style="margin:0;font-size:12px;color:#37474F"><strong>Aviso — alcance del uso de inteligencia artificial.</strong> De los ${_aiScope.total} hallazgos de este reporte, <strong>${_aiScope.deterministic}</strong> proceden de reglas deterministas del propio auditor (coincidencia de patrones sobre el texto, sin IA) y <strong>${_aiScope.ai}</strong> de pasadas de análisis con IA. Las sugerencias de redacción, los rediseños y las notas de la revisión crítica se generan con IA. Los hallazgos, sugerencias y rediseños son orientativos y pueden contener errores u omisiones. El analista conductual certificado (BCBA) es responsable de verificar cada señalamiento contra el documento original y los datos clínicos (FAST/MAS, líneas base) antes de aplicar cualquier cambio: <strong>esa revisión humana es la vía sin IA</strong> y ningún hallazgo se aplica sin ella. Ningún contenido de este reporte sustituye el juicio clínico profesional. Para reportar un hallazgo erróneo, use el botón “Reportar error” de su tarjeta en la herramienta.</p>
     </div>
     <h2>Resumen ejecutivo</h2>
     <div style="border:1px solid #6A1B9A;background:#f7f0fb;border-radius:6px;padding:10px 14px;margin:0 0 1rem">
@@ -6300,6 +6347,60 @@ function resolveCssVars(html){
   do{prev=out;out=out.replace(/var\((--[\w-]+)\)/g,(full,name)=>vars[name]!==undefined?vars[name]:full)}while(out!==prev);
   return out;
 }
+// Practice Parameters de IA, reporte de errores: "A clear, accessible reporting
+// mechanism enables providers... to flag concerns", y los reportes deben incluir
+// interpretaciones incorrectas o recomendaciones sesgadas. Marcar un hallazgo
+// como falso positivo solo lo oculta en ESTE documento; esto deja constancia
+// estructurada para corregir la REGLA. Sin backend, el canal es un archivo que
+// el analista adjunta a quien mantiene el auditor.
+function reportFindingError(fid){
+  if(!state.currentAudit||!state.currentDoc)return;
+  const f=(state.currentAudit.findings||[]).find(x=>x.id===fid);
+  if(!f){alert('No se encontr\u00f3 el hallazgo.');return;}
+  const client=state.clients.find(c=>c.id===state.activeClientId)||{};
+  const reporte={
+    tipoDeReporte:'hallazgo erroneo del auditor',
+    reportadoEl:new Date().toISOString(),
+    trazabilidad:{
+      versionDeReglas:(state.currentAudit.engine&&state.currentAudit.engine.rulesVersion)||AUDITOR_RULES_VERSION,
+      modelo:(state.currentAudit.usage&&state.currentAudit.usage.model)||null,
+      auditoriaId:state.currentAudit.id,
+      auditadaEl:new Date(state.currentAudit.auditedAt||Date.now()).toISOString()
+    },
+    documento:{
+      nombre:state.currentDoc.filename,
+      formato:state.currentDoc.format,
+      tipo:state.currentDoc.docType,
+      palabras:state.currentDoc.wordCount,
+      referenciaCliente:client.clientCode||null,
+      edadRegistrada:client.age||null
+    },
+    hallazgo:{
+      ruleId:f.ruleId,
+      severidad:f.severity,
+      categoria:f.category,
+      generadoPorIA:!!f.aiGenerated,
+      descripcion:f.description,
+      accionSugerida:f.suggestedAction||null,
+      textoCoincidente:f.matchedText||null,
+      contexto:f.context||null,
+      posicion:typeof f.position==='number'?f.position:null,
+      confianzaCritica:typeof f.confidence==='number'?f.confidence:null,
+      veredictoCritica:f.criticVerdict||null,
+      estado:f.status
+    },
+    // Lo rellena el analista antes de enviarlo.
+    porQueEsIncorrecto:'',
+    queDeberiaHaberDicho:''
+  };
+  const blob=new Blob([JSON.stringify(reporte,null,2)],{type:'application/json'});
+  triggerBlobDownload(blob,`reporte-error-${f.ruleId||'hallazgo'}-${new Date().toISOString().slice(0,10)}.json`);
+  // No hay contenedor de mensajes en la pesta\u00f1a de auditor\u00eda, y showMsg falla en
+  // silencio si el elemento no existe: un aviso que el analista no ve equivale
+  // a no avisar, asi que aqui el canal es un alert explicito.
+  alert('Reporte descargado.\n\nAbra el archivo y complete los dos campos finales: por qu\u00e9 el hallazgo es incorrecto y qu\u00e9 deber\u00eda haber dicho. Env\u00edelo despu\u00e9s a quien mantiene el auditor.\n\nNota: marcar el hallazgo como falso positivo solo lo oculta en este documento; este reporte es lo que permite corregir la regla.');
+}
+
 function triggerBlobDownload(blob,filename){
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
