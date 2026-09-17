@@ -1823,6 +1823,10 @@ async function runAudit(){
       // solo suplementa. Usa el canonico para el detalle por conducta.
       findings=findings.concat(scanFunctionEvidenceSource(text,state.currentDoc.docType,state.currentDoc.canonical));
 
+      // CASP: coherencia alcance-intensidad, con horas DIRECTAS (no el total
+      // de R9, que es la metrica del pagador).
+      findings=findings.concat(scanScopeIntensityCoherence(text,state.currentDoc.docType,state.currentDoc.canonical));
+
       const docSizeKB=Math.round(state.currentDoc.text.length/1024);
       setProg(82,`Running deep clinical & regulatory audit on full document (${docSizeKB} KB)... this can take 20-60 seconds`);
       try{
@@ -2496,6 +2500,92 @@ function scanCoreInstruments(text,docType,client){
     add('FL_CORE_SCORING_REPORT','warning',
       'Se nombran instrumentos estandarizados pero no se detectan puntuaciones reportadas. La secci\u00f3n 4.2.1 exige que el reporte completo de puntuaci\u00f3n, incluidas las outcome measure scores, se presente con la solicitud de autorizaci\u00f3n.',
       'Include the complete scoring report with outcome measure scores (standard scores, percentiles, composites) for each core instrument, as required by Florida Medicaid Coverage Policy Section 4.2.1 for prior authorization requests.');
+  }
+  return findings;
+}
+
+// CASP, "Evidence About ABA Treatment for Young Children with Autism: The
+// Impact of Treatment Intensity on Outcomes": coherencia entre ALCANCE e
+// INTENSIDAD del tratamiento. Rangos verificados en la fuente primaria:
+//   - Comprehensivo de alta intensidad: 30-40 h/sem durante al menos dos anos.
+//   - Focalizado de alcance estrecho (p. ej. unas pocas habilidades sociales):
+//     6-15 h/sem.
+//   - Focalizado sobre conducta desafiante grave que compromete la seguridad o
+//     la salud: 25-40 h/sem (y a veces cuidado hospitalario 24 h).
+//   - Comprehensivo de BAJA intensidad: apropiado "en pocos casos", tipicamente
+//     mantenimiento de un cambio ya logrado, con datos que lo respalden.
+//
+// METRICA: la intensidad son las horas entregadas DIRECTAMENTE al paciente. La
+// fuente excluye de forma explicita el manejo del caso, el entrenamiento a
+// cuidadores, la evaluacion de datos y la supervision de protocolos. Por eso
+// esta regla NO usa el total de R9 (que es la metrica del pagador) sino las
+// horas de tratamiento directo. Son las dos caras de la misma calibracion.
+//
+// SEVERIDAD: warning en todos los casos. La propia fuente subraya que la
+// intensidad debe reflejar el numero, complejidad, amplitud y profundidad de
+// los objetivos y los factores individuales, incluida la respuesta al
+// tratamiento. Son rangos de evidencia, no limites normativos.
+//
+// La regla SOLO actua si el documento DECLARA su alcance. Inferir el alcance a
+// partir del numero de metas seria adivinar, y una regla que adivina el
+// antecedente no puede sostener el consecuente.
+const FL_SCOPE_COMPREHENSIVE_RE=/\bcomprehensive\s+(?:aba|treatment|program|services?|scope|intervention|model|plan)\b|\bearly\s+intensive\s+behavio(?:u)?ral\s+intervention\b|\bEIBI\b|\bcomprehensive\s+in\s+scope\b|\bacross\s+all\s+(?:developmental\s+)?domains\b|\bdevelopmental\s+trajector\w+|\btratamiento\s+(?:comprehensivo|integral)\b/i;
+const FL_SCOPE_FOCUSED_RE=/\bfocused\s+(?:aba|treatment|program|services?|scope|intervention|model|plan)\b|\bfocused\s+in\s+scope\b|\btratamiento\s+focalizado\b/i;
+// Justifica alta intensidad en un tratamiento focalizado.
+const FL_SEVERE_BEHAVIOR_RE=/\bsevere\s+(?:challenging|problem|maladaptive|disruptive)\s+behavio\w+|\b(?:safety|health)\s+(?:risk|concern|jeopard\w+)|\bjeopardiz\w+\s+(?:the\s+)?(?:safety|health)|\bsignificant\s+risk\s+of\s+(?:harm|injury)|\brisk\s+of\s+(?:serious\s+)?(?:harm|injury)\b|\bconducta\s+(?:desafiante\s+)?(?:severa|grave)\b|\briesgo\s+(?:para\s+la\s+)?(?:seguridad|salud)\b/i;
+// Justifica baja intensidad en un tratamiento comprehensivo.
+const FL_MAINTENANCE_RE=/\bmaintenance\s+(?:of\s+)?(?:behavio\w+\s+)?(?:change|gains|skills|phase)\b|\bmaintain(?:ing)?\s+(?:the\s+)?(?:gains|progress|behavio\w+\s+change|mastered\s+skills)\b|\bfading\s+(?:of\s+)?(?:services|hours|intensity)\b|\btitrat\w+\s+down\b|\bstep[-\s]down\b|\bmantenimiento\s+de\s+(?:los\s+)?(?:logros|cambios|avances)\b|\bfase\s+de\s+mantenimiento\b/i;
+// Codigos de tratamiento DIRECTO al paciente.
+const FL_DIRECT_TREATMENT_CODES=/^(?:97153|97154)/;
+
+// Horas semanales de tratamiento directo. Prefiere el canonico; si no, el texto.
+function _flDirectHoursPerWeek(text,canonical){
+  const cpt=(canonical&&Array.isArray(canonical.cpt))?canonical.cpt:null;
+  if(cpt){
+    let total=0,found=false;
+    for(const line of cpt){
+      if(!line||!line.code)continue;
+      if(!FL_DIRECT_TREATMENT_CODES.test(String(line.code).trim()))continue;
+      const h=parseFloat(line.hoursPerWeek);
+      if(isFinite(h)&&h>0){total+=h;found=true;}
+    }
+    if(found)return total;
+  }
+  let m=text.match(/97153[^\d\n]{0,40}(\d{1,3}(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:per\s*week|\/\s*week|weekly)/i)||
+        text.match(/(\d{1,3}(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:per\s*week|\/\s*week|weekly)[^\d\n]{0,40}97153/i);
+  if(m)return parseFloat(m[1]);
+  return null;
+}
+
+function scanScopeIntensityCoherence(text,docType,canonical){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+
+  const isComprehensive=FL_SCOPE_COMPREHENSIVE_RE.test(text);
+  const isFocused=FL_SCOPE_FOCUSED_RE.test(text);
+  // Alcance no declarado, o declarado de forma contradictoria: no se juzga.
+  if(isComprehensive===isFocused)return findings;
+
+  const h=_flDirectHoursPerWeek(text,canonical);
+  if(h===null)return findings;  // sin intensidad no hay coherencia que evaluar
+
+  const add=(ruleId,description,suggestedAction)=>findings.push({
+    id:uid(),ruleId,severity:'warning',category:'medical_necessity',description,suggestedAction,
+    status:'open',createdAt:Date.now()
+  });
+  const METRICA=' Nota sobre la metrica: la intensidad se cuenta como horas de tratamiento DIRECTO al paciente (97153/97154); la supervision (97155) y el entrenamiento a cuidadores (97156) no cuentan para este rango, aunque si cuenten para el techo de cobertura de Florida.';
+
+  if(isComprehensive&&h<30){
+    if(FL_MAINTENANCE_RE.test(text))return findings;  // mantenimiento lo justifica
+    add('SCOPE_INTENSITY_COMPREHENSIVE_LOW',
+      `El documento describe un tratamiento de alcance COMPREHENSIVO con ${h} horas semanales de tratamiento directo. La evidencia recogida por CASP ("Evidence About ABA Treatment for Young Children with Autism") situa el tratamiento comprehensivo de alta intensidad en 30-40 h/semana durante al menos dos anos, y senala que un plan comprehensivo de baja intensidad es apropiado "en pocos casos", tipicamente el mantenimiento de un cambio ya logrado y con datos que lo respalden. Menos tiempo de tratamiento directo significa menos oportunidades de aprendizaje, de modo que la baja intensidad suele ser inapropiada cuando el objetivo es establecer el numero de habilidades nuevas que caracteriza a un plan comprehensivo. Si la intensidad responde a una decision clinica o a una limitacion practica, conviene justificarla en el documento.${METRICA}`,
+      'Per CASP\u2019s Evidence About ABA Treatment for Young Children with Autism, comprehensive ABA treatment is associated with better outcomes at 30-40 hours per week of direct treatment sustained over at least two years, and comprehensive scope at low intensity is appropriate only in limited circumstances such as maintenance of gains already achieved. Either document the clinical rationale for the lower intensity (including maintenance status and the data supporting it), or align the requested direct-treatment hours with the comprehensive scope of the goals.');
+  }else if(isFocused&&h>15){
+    if(FL_SEVERE_BEHAVIOR_RE.test(text))return findings;  // 25-40 esta respaldado
+    add('SCOPE_INTENSITY_FOCUSED_HIGH',
+      `El documento describe un tratamiento de alcance FOCALIZADO con ${h} horas semanales de tratamiento directo. La evidencia recogida por CASP situa el tratamiento focalizado de alcance estrecho en 6-15 h/semana. La alta intensidad en un tratamiento focalizado esta respaldada cuando aborda conducta desafiante grave que compromete la seguridad o la salud del cliente o de sus cuidadores (25-40 h/semana), pero el documento no describe ese cuadro. Conviene ampliar el alcance declarado si las metas lo justifican, o justificar la intensidad solicitada.${METRICA}`,
+      'Per CASP\u2019s Evidence About ABA Treatment for Young Children with Autism, focused treatment of narrow scope typically requires 6-15 hours per week, while focused treatment of severe challenging behavior that jeopardizes the safety or health of the client or caregivers may require 25-40 hours per week. Either document the severity and risk that justify the requested intensity, or reconsider whether the treatment scope is in fact comprehensive rather than focused.');
   }
   return findings;
 }
