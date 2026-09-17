@@ -1776,6 +1776,7 @@ async function runAudit(){
     findings=findings.concat(scanParentParticipation(text,state.currentDoc.docType));
     findings=findings.concat(scanAdminRequiredElements(text,state.currentDoc.docType));
     findings=findings.concat(scanProceduralFidelity(text,state.currentDoc.docType));
+    findings=findings.concat(scanAssessmentDomains(text,state.currentDoc.docType));
     findings=findings.concat(scanAgeConsistency(text));
     findings=findings.concat(scanCommunicationCongruence(text));
     findings=findings.concat(scanSTOIntegrity(text));
@@ -2509,6 +2510,60 @@ function scanCoreInstruments(text,docType,client){
       'Se nombran instrumentos estandarizados pero no se detectan puntuaciones reportadas. La secci\u00f3n 4.2.1 exige que el reporte completo de puntuaci\u00f3n, incluidas las outcome measure scores, se presente con la solicitud de autorizaci\u00f3n.',
       'Include the complete scoring report with outcome measure scores (standard scores, percentiles, composites) for each core instrument, as required by Florida Medicaid Coverage Policy Section 4.2.1 for prior authorization requests.');
   }
+  return findings;
+}
+
+// CASP/APBA, ASD Assessment Guidelines for Behavior Analysts (marzo 2026),
+// cap. 5, Key Points, p. 54: "Four primary assessment domains highlight the most
+// commonly assessed areas in the assessment and treatment of ASD: (a) CORE
+// CHARACTERISTICS OF ASD (including social communication and restricted
+// behaviors), (b) ADAPTIVE BEHAVIOR AND FUNCTIONING, (c) WELL-BEING AND QUALITY
+// OF LIFE, and (d) CO-OCCURRING CONDITIONS AND ASSOCIATED FEATURES such as
+// mental health, intellectual impairments, and language disorders."
+//
+// TONO. La fuente presenta los dominios como el marco de las areas mas
+// comunmente evaluadas y urge a seleccionar instrumentos alineados con las
+// metas centradas en el cliente; no exige los cuatro en todo documento. Por eso
+// el hallazgo es warning, esta redactado como apoyo y ofrece la salida honesta:
+// documentar por que un dominio no se evaluo tambien resuelve el hallazgo.
+//
+// En la practica (a) y (b) suelen estar, porque Florida exige el Vineland-3 y
+// el documento describe la conducta nuclear; los que faltan casi siempre son
+// (c) calidad de vida y (d) condiciones co-ocurrentes.
+const FL_ASSESSMENT_DOMAINS=[
+  {key:'core',label:'(a) caracteristicas nucleares del TEA: comunicacion social y conductas restringidas o repetitivas',
+   re:/\bsocial\s+communication\b|\bsocial\s+interaction\b|\bjoint\s+attention\b|\brestricted\s+(?:and\s+repetitive\s+)?(?:behavio\w+|interests?|patterns?)\b|\brepetitive\s+behavio\w+|\bstereotyp\w+|\bcore\s+(?:characteristics|symptoms|features)\b|\bADOS\b|\bCARS[-\s]?2?\b|\bSRS[-\s]?2?\b|\bGARS\b|\bSCQ\b|\bPDDBI\b|\bcomunicaci[óo]n\s+social\b|\bconductas?\s+(?:repetitivas?|restringidas?)\b|\bintereses\s+restringidos\b/i},
+  {key:'adaptive',label:'(b) conducta y funcionamiento adaptativo',
+   re:/\badaptive\s+(?:behavio\w+|functioning|skills?|composite)\b|\bdaily\s+living\s+skills?\b|\bactivities\s+of\s+daily\s+living\b|\bADLs?\b|\bself[-\s]care\s+skills?\b|\bVineland\b|\bABAS[-\s]?3?\b|\bconducta\s+adaptativa\b|\bfuncionamiento\s+adaptativo\b|\bhabilidades\s+de\s+(?:la\s+)?vida\s+diaria\b/i},
+  {key:'wellbeing',label:'(c) bienestar y calidad de vida',
+   re:/\bquality\s+of\s+life\b|\bwell[-\s]?being\b|\bQoL\b|\blife\s+satisfaction\b|\bPedsQL\b|\bKINDL\b|\bcalidad\s+de\s+vida\b|\bbienestar\b/i},
+  {key:'cooccurring',label:'(d) condiciones co-ocurrentes y caracteristicas asociadas: salud mental, discapacidad intelectual, trastornos del lenguaje',
+   re:/\bco[-\s]?occurring\b|\bco[-\s]?morbid\w*|\bcomorbid\w*|\bdual\s+diagnos\w+|\bmental\s+health\b|\bintellectual\s+(?:disability|impairment|functioning)\b|\bcognitive\s+(?:impairment|delay)\b|\blanguage\s+(?:disorder|delay|impairment)\b|\bspeech\s+and\s+language\b|\bcommunication\s+disorder\b|\bADHD\b|\banxiety\s+disorder\b|\bepilepsy\b|\bseizure\s+disorder\b|\bsleep\s+disorder\b|\bcondiciones?\s+co[-\s]?ocurrentes?\b|\bcomorbilidad\w*|\bdiscapacidad\s+intelectual\b|\btrastorno\s+del\s+lenguaje\b/i}
+];
+// Justificar por que un dominio no se evaluo tambien resuelve el hallazgo.
+const FL_DOMAIN_RATIONALE_RE=/\bnot\s+assessed\s+because\b|\bwas\s+not\s+(?:assessed|evaluated)[^.;\n]{0,60}\b(?:because|due\s+to|as\s+the)\b|\brationale\s+for\s+(?:not\s+)?(?:selecting|assessing)\b|\bdomain\s+was\s+(?:not\s+)?(?:assessed|prioritized)\b|\bno\s+se\s+evalu[óo][^.;\n]{0,60}\b(?:porque|debido\s+a)\b/i;
+
+function scanAssessmentDomains(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+
+  const missing=FL_ASSESSMENT_DOMAINS.filter(d=>!d.re.test(text)).map(d=>d.label);
+  if(!missing.length)return findings;
+  // El analista ya explica por que dejo fuera un dominio.
+  if(FL_DOMAIN_RATIONALE_RE.test(text))return findings;
+
+  const esReassess=docType==='reassessment';
+  findings.push({
+    id:uid(),
+    ruleId:'SEC_ASSESSMENT_DOMAINS',
+    severity:'warning',
+    category:'completeness',
+    description:`Las guias CASP/APBA (marzo 2026, cap. 5) organizan la evaluacion del TEA en cuatro dominios primarios, y ${missing.length===1?'no se detecta este':'no se detectan estos'}: ${missing.join('; ')}. Las guias urgen a seleccionar instrumentos alineados con las metas centradas en el cliente, de modo que no todos los dominios aplican a todos los casos: documentar por que un dominio no se evaluo resuelve igualmente esta observacion.${esReassess?' Al tratarse de un reassessment, el dominio puede haberse cubierto en la evaluacion inicial; basta con referirlo.':''}`,
+    suggestedAction:'Per the CASP/APBA ASD Assessment Guidelines for Behavior Analysts (March 2026, Chapter 5), the four primary assessment domains are (a) core characteristics of ASD including social communication and restricted or repetitive behaviors, (b) adaptive behavior and functioning, (c) well-being and quality of life, and (d) co-occurring conditions and associated features such as mental health, intellectual impairments and language disorders. Either report what was assessed in the missing domains, or state the clinical rationale for not assessing them for this client.',
+    status:'open',
+    createdAt:Date.now()
+  });
   return findings;
 }
 

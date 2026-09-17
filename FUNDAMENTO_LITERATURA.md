@@ -224,7 +224,7 @@ Todas citan Florida Medicaid, texto verificado.
 
 **R11 — Fidelidad procedimental distinta del IOA (`PROCEDURAL_FIDELITY`). ✅ IMPLEMENTADO** como `scanProceduralFidelity`, con corrección del detector de `IOA_PROTOCOL_MODIFICATION`, que aceptaba "treatment integrity" como si acreditara IOA. Requisito propio; que no se dé por satisfecho con una mención de IOA. *CASP cap. 4, p. 43.*
 
-**R12 — Cuatro dominios de evaluación (`SEC_ASSESSMENT_DOMAINS`).** Los dos primeros suelen estar; calidad de vida y condiciones co-ocurrentes casi nunca. *CASP cap. 5, p. 54.*
+**R12 — Cuatro dominios de evaluación (`SEC_ASSESSMENT_DOMAINS`). ✅ IMPLEMENTADO** como `scanAssessmentDomains`. Los dos primeros suelen estar; calidad de vida y condiciones co-ocurrentes casi nunca. *CASP cap. 5, p. 54.*
 
 **R13 — Assent del cliente (`SEC_ASSENT`).** Separado del consentimiento del tutor. *CASP cap. 2, p. 18.*
 
