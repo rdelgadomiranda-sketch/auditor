@@ -212,7 +212,7 @@ Todas citan Florida Medicaid, texto verificado.
 
 **R6 — Servicios no cubiertos (`FL_NON_COVERED`). ✅ IMPLEMENTADO** como `scanNonCoveredServices`. Añadir a las reglas deterministas: reclusión y restricción manual/mecánica/química, 1:1 aide / shadow / companion, psicoterapia y testing psicológico, travel time, servicios simultáneos sin autorización. `blocker`. *§5.2.* **Nota clínica:** esto se solapa parcialmente con la lista de intervenciones prohibidas que ya existe, pero el fundamento es distinto — allí es "no es ABA", aquí es "Medicaid no lo paga". Conviene que el hallazgo lo diga.
 
-**R7 — Participación parental documentada (`FL_PARENT_PARTICIPATION`).** Esfuerzos documentados; si no participa, razones + impactos + mitigación; y en continuación, datos de participación. *§4.2.2, §7.2.*
+**R7 — Participación parental documentada (`FL_PARENT_PARTICIPATION`). ✅ IMPLEMENTADO** como `scanParentParticipation`. Esfuerzos documentados; si no participa, razones + impactos + mitigación; y en continuación, datos de participación. *§4.2.2, §7.2.*
 
 **R8 — Elementos administrativos faltantes.** Firmas (Lead Analyst **y** tutor), nombres de supervisores, care coordination, historia médica con medicamentos, file review, número de unidades por código con su necesidad médica, IEP/504 en servicios escolares. Un bloque de completitud, severidad `warning`, agregado. *§6.2.2, §7.2.*
 

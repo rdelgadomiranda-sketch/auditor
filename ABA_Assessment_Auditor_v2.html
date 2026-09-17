@@ -1766,6 +1766,7 @@ async function runAudit(){
     findings=findings.concat(scanCoreInstruments(text,state.currentDoc.docType,state.clients.find(c=>c.id===state.activeClientId)));
     findings=findings.concat(scanNoProgressExplanation(text,state.currentDoc.docType));
     findings=findings.concat(scanNonCoveredServices(text,state.currentDoc.docType));
+    findings=findings.concat(scanParentParticipation(text,state.currentDoc.docType));
     findings=findings.concat(scanAgeConsistency(text));
     findings=findings.concat(scanCommunicationCongruence(text));
     findings=findings.concat(scanSTOIntegrity(text));
@@ -2490,6 +2491,91 @@ function scanCoreInstruments(text,docType,client){
     add('FL_CORE_SCORING_REPORT','warning',
       'Se nombran instrumentos estandarizados pero no se detectan puntuaciones reportadas. La secci\u00f3n 4.2.1 exige que el reporte completo de puntuaci\u00f3n, incluidas las outcome measure scores, se presente con la solicitud de autorizaci\u00f3n.',
       'Include the complete scoring report with outcome measure scores (standard scores, percentiles, composites) for each core instrument, as required by Florida Medicaid Coverage Policy Section 4.2.1 for prior authorization requests.');
+  }
+  return findings;
+}
+
+// FL Medicaid 4.2.2 y 7.2: participacion de padres o tutores.
+//
+// 4.2.2: "The provider must make every effort to accommodate parental
+// participation and must document those efforts in treatment plan updates. If
+// parent or guardian participation is not possible, the treatment plan and
+// session notes must document the reasons for non-participation. Documentation
+// should also explain potential impacts of non-participation and how potential
+// impacts are being mitigated."
+// 7.2: "Authorization requests for service continuation must include data about
+// parental guardian participation in services."
+//
+// Igual que en R5, la obligacion mas fuerte es CONDICIONAL: solo cuando la
+// participacion no es posible. La regla no juzga si el cuidador participa lo
+// suficiente; actua cuando el documento declara que la participacion fue nula
+// o limitada, y entonces verifica las tres consecuencias que la norma exige.
+const FL_NONPARTICIPATION_RES=[
+  /\b(?:parent|guardian|caregiver|mother|father|family)\w*[^.;\n]{0,80}?\b(?:unable\s+to\s+(?:participate|attend)|cannot\s+(?:participate|attend)|could\s+not\s+(?:participate|attend)|did\s+not\s+(?:participate|attend)|does\s+not\s+(?:participate|attend)|has\s+not\s+participated|declin\w+\s+to\s+participate|was\s+not\s+present|is\s+not\s+available)/i,
+  /\b(?:limited|minimal|inconsistent|sporadic|poor|low|lack\s+of|no)\s+(?:parent|guardian|caregiver|family|parental)\w*\s+(?:participation|involvement|attendance|engagement)/i,
+  /\b(?:parent|guardian|caregiver|family|parental)\w*\s+(?:participation|involvement|attendance|engagement)\s+(?:has\s+been|had\s+been|was|is)\s+(?:limited|minimal|inconsistent|sporadic|poor|low)/i,
+  /\bparticipation\s+(?:is|was)\s+not\s+possible\b/i,
+  /\b(?:no|sin)\s+(?:puede|pudo|pudieron)\s+participar\b/i,
+  /\bparticipaci[\u00f3o]n\s+(?:de\s+(?:los\s+)?(?:padres|cuidadores|tutores)\s+)?(?:(?:fue|es|ha\s+sido|hab[\u00ed i]a\s+sido|era|result[\u00f3o])\s+)?(?:limitada|m[\u00ed i]nima|inconsistente|nula|escasa|pobre)\b/i
+];
+const FL_IMPACT_RE=/\bimpact(?:s|ed|ing)?\b|\beffects?\s+(?:on|of)\b|\bmay\s+affect\b|\baffect(?:s|ed)?\b|\bconsequences?\b|\blimits?\s+(?:the|generalization|progress|carryover)\b|\bcompromis\w+|\bimpacto\b|\bafecta\b|\bconsecuencias?\b/i;
+const FL_MITIGATION_RE=/\bmitigat\w+|\bto\s+address\s+(?:this|these)\b|\balternative\s+(?:arrangements?|methods?|formats?|times?)\b|\btele(?:health|medicine)\b|\bvia\s+video\b|\brecorded\s+(?:sessions?|training)\b|\bmake[-\s]?up\s+sessions?\b|\bcompensat\w+|\bflexible\s+scheduling\b|\b(?:evening|weekend)\s+(?:availability|sessions?|appointments?)\b|\bwritten\s+(?:materials|handouts)\s+(?:will\s+be\s+)?(?:provided|sent)\b|\bmitigar\b|\bpara\s+compensar\b|\bhorario\s+flexible\b/i;
+const FL_ACCOMMODATION_RE=/\bevery\s+effort\b|\befforts?\s+to\s+(?:accommodate|engage|include|involve|schedule)\b|\battempt(?:s|ed)?\s+to\s+(?:schedule|contact|reach|engage)\b|\bresched\w+|\boffered\s+(?:multiple|alternative|flexible|evening|weekend|tele\w+)\b|\boutreach\b|\bcontacted\s+the\s+(?:parent|guardian|caregiver|family)\b|\binvited\s+(?:the\s+)?(?:parent|guardian|caregiver|family)\b|\bflexible\s+scheduling\b|\besfuerzos?\s+para\s+(?:acomodar|incluir|involucrar)\b|\bse\s+(?:le\s+)?ofrecieron\s+horarios\b/i;
+// "data about parental guardian participation": una cifra, no una impresion.
+const FL_PARTICIPATION_DATA_RE=/\battended\s+\d+\s+(?:of\s+\d+\s+)?(?:sessions?|appointments?|meetings?)\b|\b\d+\s*%[^.;\n]{0,40}?(?:sessions?|participation|attendance|training)\b|\bparticipation\s+rate\b|\battendance\s+(?:rate|data|log|record)\b|\b\d+\s+(?:of|out\s+of)\s+\d+\s+(?:parent|caregiver|family|training)\s*(?:training\s+)?sessions?\b|\b(?:parent|guardian|caregiver)\w*\s+(?:attended|participated\s+in|completed)\s+\d+\b|\basisti[\u00f3o]\s+a\s+\d+\b/i;
+const FL_PARTICIPATION_MENTION_RE=/\b(?:parent|guardian|caregiver|family|parental)\w*\s+(?:participation|involvement|attendance|engagement|training)\b|\b97156\b|\bparticipaci[\u00f3o]n\s+(?:de\s+(?:los\s+)?)?(?:padres|cuidadores)\b/i;
+
+function scanParentParticipation(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+  const isReauth=docType==='reassessment'||/\b(?:continuation\s+of\s+services|reauthorization)\b/i.test(text);
+  const add=(ruleId,severity,description,suggestedAction,hit)=>{
+    const f={id:uid(),ruleId,severity,category:'florida_medicaid',description,suggestedAction,
+      status:'open',createdAt:Date.now()};
+    if(hit){f.matchedText=hit[0].trim();f.position=hit.index;f.context=extractContext(text,hit.index,hit[0].length);}
+    findings.push(f);
+  };
+
+  // 1. Condicional: el documento declara que la participacion no fue posible.
+  let signal=null;
+  for(const re of FL_NONPARTICIPATION_RES){
+    const m=text.match(re);
+    if(m){signal=m;break;}
+  }
+  if(signal){
+    const falta=[];
+    if(!FL_EXPLANATION_SIGNALS.test(text))falta.push('las RAZONES de la no participacion');
+    if(!FL_IMPACT_RE.test(text))falta.push('los IMPACTOS potenciales de esa no participacion');
+    if(!FL_MITIGATION_RE.test(text))falta.push('COMO se estan mitigando esos impactos');
+    if(falta.length){
+      add('FL_PARENT_NONPARTICIPATION_DOC','blocker',
+        `El documento declara que la participacion del padre, tutor o cuidador fue nula o limitada ("${signal[0].trim()}"). La Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024, seccion 4.2.2) exige entonces documentar tres cosas que no se detectan: ${falta.join('; ')}.`,
+        'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 4.2.2: when parent or guardian participation is not possible, the treatment plan and session notes must document the reasons for non-participation, and the documentation should also explain the potential impacts of non-participation and how those potential impacts are being mitigated. Add all three.',
+        signal);
+    }
+  }
+
+  if(isReauth){
+    // 2. Seccion 7.2: la solicitud de continuacion debe traer DATOS.
+    if(!FL_PARTICIPATION_MENTION_RE.test(text)){
+      add('FL_PARENT_PARTICIPATION_DATA','blocker',
+        'La solicitud de continuacion no trata la participacion del padre o tutor en los servicios. La seccion 7.2 de la Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024) exige que las solicitudes de continuacion incluyan datos sobre esa participacion.',
+        'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 7.2, authorization requests for service continuation must include data about parental/guardian participation in services. Report attendance or participation figures for the period (for example, sessions attended out of sessions offered).');
+    }else if(!FL_PARTICIPATION_DATA_RE.test(text)){
+      add('FL_PARENT_PARTICIPATION_DATA','warning',
+        'La participacion del padre o tutor se menciona, pero no se detectan DATOS que la cuantifiquen (sesiones asistidas sobre ofrecidas, porcentaje, registro de asistencia). La seccion 7.2 pide datos sobre la participacion, no solo una descripcion narrativa.',
+        'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 7.2, include quantitative data about parental/guardian participation for the authorization period, such as sessions attended out of sessions offered or a participation rate, alongside the narrative.');
+    }
+    // 3. Seccion 4.2.2: los esfuerzos por acomodar se documentan en las
+    //    actualizaciones del plan. Es un requisito incondicional, pero se emite
+    //    como warning: su ausencia es un vacio documental, no una prueba de que
+    //    el proveedor no lo haya intentado.
+    if(!FL_ACCOMMODATION_RE.test(text)){
+      add('FL_PARENT_ACCOMMODATION_EFFORTS','warning',
+        'No se detecta documentacion de los esfuerzos por acomodar la participacion del padre o tutor. La seccion 4.2.2 de la Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024) obliga al proveedor a hacer todo esfuerzo por acomodarla y a documentar esos esfuerzos en las actualizaciones del plan de tratamiento.',
+        'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 4.2.2, document the specific efforts made to accommodate parental participation in the treatment plan update: scheduling options offered, contacts attempted, telehealth or evening/weekend alternatives, and the outcome of each.');
+    }
   }
   return findings;
 }
