@@ -2817,7 +2817,25 @@ function scanNonCoveredServices(text,docType){
   return findings;
 }
 
-// FL Medicaid 4.2.2: limites duros de cobertura.
+// FL Medicaid 4.2.2: limites de cobertura.
+//
+// CALIBRACION DE SEVERIDAD. Las dos reglas de HORAS son warning, no blocker,
+// porque la METRICA esta en disputa. CASP, en "Evidence About ABA Treatment for
+// Young Children with Autism: The Impact of Treatment Intensity on Outcomes"
+// (p. 11), define la intensidad como las horas entregadas DIRECTAMENTE al
+// paciente y excluye de forma explicita el manejo del caso, el entrenamiento a
+// cuidadores, la evaluacion de datos y la supervision de protocolos; su nota al
+// pie anade que los pagadores que suman esas horas "no usan la metrica
+// utilizada en la mayoria de los estudios". Florida, en cambio, lista los
+// servicios de modificacion de protocolo y de guia a la familia dentro de los
+// "BA intervention services" sujetos al techo. Un plan con 35 h directas mas 4
+// de supervision y 2 de entrenamiento suma 41 y sobrepasa el techo segun la
+// lectura del pagador, pero su intensidad clinica es 35 y esta dentro de rango.
+// Como el auditor no puede resolver esa discrepancia por el analista, informa
+// en vez de bloquear.
+//
+// Los limites CATEGORICOS (tamano de grupo, proveedor autorizado) siguen siendo
+// blocker: no dependen de como se cuenten las horas.
 //   - "Florida Medicaid covers up to 40 hours per week of BA intervention
 //     services as indicated in the recipient's prior-authorized behavior plan."
 //   - Servicios grupales: "Maximum group size is six participants."
@@ -2873,9 +2891,9 @@ function scanFloridaServiceLimits(text,canonical){
     if(h>40&&h<=168&&(!worst||h>worst.h))worst={h,match:m[0],index:m.index};
   }
   if(worst){
-    add('FL_LIMIT_WEEKLY_HOURS','blocker',
-      `El documento declara ${worst.h} horas semanales ("${worst.match}"), por encima del techo de cobertura. La Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024, seccion 4.2.2) cubre hasta 40 horas por semana de servicios de intervencion BA.`,
-      'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 4.2.2, Florida Medicaid covers up to 40 hours per week of BA intervention services. Reduce the requested weekly hours to 40 or fewer, or document the medical necessity justification for an EPSDT exception for recipients under 21.',
+    add('FL_LIMIT_WEEKLY_HOURS','warning',
+      `El documento declara ${worst.h} horas semanales ("${worst.match}"), por encima del techo de cobertura. La Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024, seccion 4.2.2) cubre hasta 40 horas por semana de servicios de intervencion BA. Verifique QUE incluye esa cifra: si suma supervision (97155) o entrenamiento a cuidadores (97156) junto a la terapia directa, la intensidad clinica puede estar dentro de rango aunque el total exceda el techo del pagador. CASP define la intensidad como horas entregadas directamente al paciente y excluye supervision y entrenamiento a cuidadores.`,
+      'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 4.2.2, Florida Medicaid covers up to 40 hours per week of BA intervention services. Confirm what the stated figure includes: CASP defines treatment intensity as hours delivered directly to the patient, excluding case management, caregiver training, data evaluation and protocol supervision. If the figure sums those in, restate the direct-treatment hours separately. If direct intervention genuinely exceeds 40 hours per week, reduce it or document the medical necessity justification for an EPSDT exception for recipients under 21.',
       worst.match,worst.index);
   }
 
@@ -2894,9 +2912,9 @@ function scanFloridaServiceLimits(text,canonical){
       lines.push(`${code}${line.modifier?' '+line.modifier:''}: ${h} h/sem`);
     }
     if(total>40&&!worst){
-      add('FL_LIMIT_WEEKLY_HOURS_TOTAL','blocker',
-        `Las horas semanales de intervencion suman ${Math.round(total*100)/100}, por encima del techo de cobertura de 40 h/semana que fija la seccion 4.2.2 de la Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024). Lineas contabilizadas: ${lines.join('; ')}. Los codigos de evaluacion (97151, 97152) no se incluyen.`,
-        'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 4.2.2, total BA intervention services are covered up to 40 hours per week. Reduce the combined weekly hours across intervention codes to 40 or fewer, or document the medical necessity justification for an EPSDT exception for recipients under 21.');
+      add('FL_LIMIT_WEEKLY_HOURS_TOTAL','warning',
+        `Las horas semanales de intervencion suman ${Math.round(total*100)/100}, por encima del techo de 40 h/semana de la seccion 4.2.2 de la Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024). Lineas contabilizadas: ${lines.join('; ')}. Los codigos de evaluacion (97151, 97152) no se incluyen. AVISO SOBRE LA METRICA: esta suma agrega todas las lineas de intervencion, que es como Florida define los "BA intervention services". CASP define la intensidad del tratamiento como las horas entregadas DIRECTAMENTE al paciente y excluye supervision, modificacion de protocolo y entrenamiento a cuidadores, de modo que la intensidad clinica de este plan puede estar dentro de rango aunque el total exceda el techo. Decida cual lectura aplica su revisor.`,
+        'Per the Florida Medicaid BA Services Coverage Policy (December 2024), Section 4.2.2, BA intervention services are covered up to 40 hours per week, and the policy lists protocol modification and family guidance among those services. Note that CASP (Evidence About ABA Treatment for Young Children with Autism, p. 11) defines treatment intensity as hours delivered directly to the patient, excluding case management, caregiver training and protocol supervision. Confirm how your reviewer counts these lines; if the payer counts them together, reduce the combined weekly hours to 40 or fewer or document the medical necessity justification for an EPSDT exception for recipients under 21.');
     }
   }
 

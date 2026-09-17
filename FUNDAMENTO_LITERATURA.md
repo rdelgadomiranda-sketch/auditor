@@ -216,7 +216,7 @@ Todas citan Florida Medicaid, texto verificado.
 
 **R8 — Elementos administrativos faltantes.** Firmas (Lead Analyst **y** tutor), nombres de supervisores, care coordination, historia médica con medicamentos, file review, número de unidades por código con su necesidad médica, IEP/504 en servicios escolares. Un bloque de completitud, severidad `warning`, agregado. *§6.2.2, §7.2.*
 
-**R9 — Techos duros. ✅ IMPLEMENTADO** como `scanFloridaServiceLimits`. >40 h/sem, grupo >6, protocol modification atribuido a RBT. `blocker`. *§4.2.2.*
+**R9 — Techos duros. ✅ IMPLEMENTADO** como `scanFloridaServiceLimits`, **recalibrado**: las reglas de horas son `warning` porque la métrica de intensidad está en disputa entre CASP y el pagador; tamaño de grupo y proveedor autorizado siguen en `blocker`. >40 h/sem, grupo >6, protocol modification atribuido a RBT. `blocker`. *§4.2.2.*
 
 ### Bloque B — calidad clínica, con cita verificable
 
@@ -259,6 +259,12 @@ Con los dos PDF aportados, el bloque vinculante está cubierto. Quedan:
 
 - Florida Agency for Health Care Administration (diciembre 2024). *Florida Medicaid Behavior Analysis Services Coverage Policy.* 12 pp. Incorporada por referencia en la Regla 59G-4.125, F.A.C.
 - Council of Autism Service Providers & Association of Professional Behavior Analysts (2026). *Autism spectrum disorders assessment guidelines for behavior analysts.* 79 pp.
+
+**Primarias, leídas en esta sesión (aportadas por Rolando):**
+
+- Council of Autism Service Providers (s.f.). *Evidence About ABA Treatment for Young Children with Autism: The Impact of Treatment Intensity on Outcomes.* 46 pp. — **Define la intensidad como horas directas al paciente, excluyendo manejo de caso, entrenamiento a cuidadores, evaluación de datos y supervisión de protocolos** (p. 11). Rangos verificados: comprehensivo de alta intensidad **30–40 h/sem durante al menos dos años**; focalizado de alcance estrecho **6–15 h/sem**; focalizado sobre conducta desafiante grave **25–40 h/sem**; comprehensivo de baja intensidad, apropiado "en pocos casos" (típicamente mantenimiento). **Sustituye los rangos no verificados de §5 y motivó la recalibración de R9 a `warning`.** Habilita además una regla de **coherencia alcance ↔ intensidad**, mejor que "horas fuera de rango".
+- Council of Autism Service Providers & Association of Professional Behavior Analysts (s.f.). *Practice Parameters for Artificial Intelligence Use in Applied Behavior Analysis.* 25 pp. — **Gobierna al auditor mismo, no a los documentos que audita.** Exige transparencia (explicabilidad e interpretabilidad), trazabilidad de errores hasta su origen, revelar **el alcance** del uso de IA y **ofrecer alternativas sin IA como opt-out**, monitoreo de deriva con responsable y umbrales definidos, auditoría periódica, y un canal estructurado de reporte de errores. Advierte que los pagadores pueden no permitir ni reembolsar todo uso de IA. Resume el invariante del proyecto: *"AI should serve as a tool to support clinical work, not supplant it."*
+- Council of Autism Service Providers et al. (2021). *The Health Insurance Appeals Guide: A Consumer Guide for Filing Autism Appeals.* 79 pp. — Guía de consumidor, no estándar de práctica ni específica de Florida: **menor valor para generar reglas**. Clasifica las denegaciones en administrativas, de cobertura y clínicas. Su aporte es de encuadre: el assessment es la prueba en una apelación futura, lo que sugiere reforzar el resumen ejecutivo y la declaración del consultor antes que añadir blockers.
 
 **Secundarias, vía búsqueda:**
 
