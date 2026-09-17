@@ -696,10 +696,62 @@ const PLACEHOLDER_PATTERNS=[
   {regex:/\[fecha\]/gi,description:'Unfilled placeholder: [fecha]'},
   {regex:/\[nombre del cliente\]/gi,description:'Unfilled placeholder: [nombre del cliente]'},
   {regex:/\bXXXX+\b/g,description:'Unfilled placeholder: XXXX...'},
-  {regex:/\bTBD\b/g,description:'TBD placeholder not completed'},
-  {regex:/\bTBA\b/g,description:'TBA placeholder not completed'},
+  {regex:/\bTBD\b/g,description:'TBD placeholder not completed',contextual:'tbd'},
+  {regex:/\bTBA\b/g,description:'TBA placeholder not completed',contextual:'tbd'},
   {regex:/\.\.\.+/g,description:'Possible ellipsis placeholder',severity:'notice'}
 ];
+
+/* ââ TBD / TBA: convenciÃ³n vÃ¡lida SOLO en fechas de servicio âââââââ
+   "TBD"/"TBA" es la convenciÃ³n con la que el analista marca fechas que
+   todavÃ­a no estÃ¡n definidas porque dependen de la autorizaciÃ³n o del
+   servicio en ejecuciÃ³n: inicio de servicios, perÃ­odo de autorizaciÃ³n,
+   prÃ³xima revisiÃ³n, alta, firma. Marcarlas como blockers producÃ­a decenas
+   de hallazgos invÃ¡lidos que hundÃ­an el score.
+
+   PERO la Florida Medicaid Behavior Analysis Services Coverage Policy
+   (diciembre 2024, Â§6.2.2, incorporada por referencia en la Regla
+   59G-4.125) enumera nueve elementos que CADA target, goal u objective
+   debe contener â entre ellos "Date of introduction", "Estimated date of
+   mastery" y "Current level (baseline)". La norma pide una fecha
+   *estimada*: precisamente porque no exige certeza, un "TBD" ahÃ­ es un
+   elemento requerido faltante y motivo de denegaciÃ³n. Esos campos se
+   marcan, aunque la palabra "date" aparezca en su etiqueta. */
+const TBD_DATE_CONTEXT=/(start\s+date|service\s+date|date\s+of\s+service|begin|onset|initiat|effective\s+date|end\s+date|expir|renew|next\s+review|review\s+date|reevaluat|re-evaluat|reassessment\s+date|authorization|auth\.|authoriz|service\s+period|period\s+of\s+service|deadline|due\b|pending|in\s+progress|ongoing|currently|upon\s+(approval|authorization|receipt)|tentative|follow[-\s]?up|signature|signed|admission|discharge\s+date|fecha\s+de\s+(inicio|servicio|alta)|per\xc3\xadodo\s+de\s+autorizaci\xc3\xb3n|\d{1,2}\s*\/\s*\d{1,2}\s*\/\s*\d{2,4}|_{2,}\s*\/\s*_{2,})/i;
+// Florida Medicaid Â§6.2.2: elementos requeridos por cada meta u objetivo.
+// Nunca pueden quedar "por determinar", ni siquiera en una conducta nueva.
+const TBD_REQUIRED_FIELD=/(date\s+of\s+introduction|fecha\s+de\s+introducci\xc3\xb3n|estimated\s+date\s+of\s+mastery|date\s+of\s+mastery|mastery\s+date|fecha\s+(estimada\s+)?de\s+dominio|mastery\s+criteri|criterio\s+de\s+dominio|current\s+level|baseline|l\xc3\xadnea\s+base|linea\s+base|nivel\s+actual|measurement\s+procedure|observation\s+and\s+measurement|procedimiento\s+de\s+medici\xc3\xb3n|plan\s+for\s+generalization|generalization\s+plan|plan\s+de\s+generalizaci\xc3\xb3n|conditions?\s+under\s+which|acquisition\s+procedure|reduction\s+procedure)/i;
+// Identidad del cliente y lÃ³gica clÃ­nica del plan: nunca indefinidos.
+const TBD_NEVER_VALID=/(function\s+of\s+(the\s+)?behavior|hypothesi[sz]ed\s+function|functional\s+hypothesis|function\s*[:=]|operational\s+definition|client\s+name|patient\s+name|date\s+of\s+birth|\bdob\b|diagnos|icd-?10|dsm-?5)/i;
+
+// 'date' = convenciÃ³n vÃ¡lida, no se marca.
+// 'required_field' = elemento exigido por FL Medicaid Â§6.2.2, blocker con cita.
+// 'invalid' = placeholder sin completar, blocker genÃ©rico.
+function classifyTbdContext(text,index,matchLen){
+  // Ventana estrecha = la ETIQUETA que precede al TBD, sin invadir la lÃ­nea u
+  // oraciÃ³n anterior (si no, "Date of birth: ..." de la lÃ­nea de arriba
+  // marcaba como invÃ¡lido un "Start date: TBD" legÃ­timo).
+  let tight=text.slice(Math.max(0,index-70),index);
+  const cutLine=Math.max(tight.lastIndexOf('\n'),tight.lastIndexOf('\r'),tight.lastIndexOf('. '),tight.lastIndexOf('\t'),tight.lastIndexOf('|'));
+  if(cutLine!==-1)tight=tight.slice(cutLine+1);
+  tight+=' '+text.slice(index+matchLen,Math.min(text.length,index+matchLen+15));
+  if(TBD_NEVER_VALID.test(tight))return 'invalid';
+  if(TBD_REQUIRED_FIELD.test(tight))return 'required_field';
+  // Ventana amplia = el pÃ¡rrafo/bloque (cabeceras de tabla, encabezado de la
+  // secciÃ³n), sin cruzar a un pÃ¡rrafo distinto.
+  let before=text.slice(Math.max(0,index-160),index);
+  const cutPara=before.lastIndexOf('\n\n');
+  if(cutPara!==-1)before=before.slice(cutPara+2);
+  let after=text.slice(index+matchLen,Math.min(text.length,index+matchLen+100));
+  const cutAfter=after.indexOf('\n\n');
+  if(cutAfter!==-1)after=after.slice(0,cutAfter);
+  const around=before+' '+after;
+  // Segunda pasada para tablas de metas, donde la etiqueta estÃ¡ en la fila de
+  // cabecera: un TBD dentro de un bloque de meta es un elemento faltante antes
+  // que una fecha de servicio.
+  if(TBD_REQUIRED_FIELD.test(around))return 'required_field';
+  if(TBD_DATE_CONTEXT.test(around))return 'date';
+  return 'invalid';
+}
 
 /* ── Clinical Safety Rules ─────────────────────────────── */
 const DANGEROUS_BEHAVIORS = [
@@ -2154,9 +2206,33 @@ function scanProhibitedInterventions(text){
 
 function scanPlaceholders(text){
   const findings=[];
+  const tbdValid=[]; // TBD/TBA de fecha de servicio: convenciÃ³n vÃ¡lida
   for(const pattern of PLACEHOLDER_PATTERNS){
     const matches=[...text.matchAll(pattern.regex)];
     for(const m of matches){
+      // TBD/TBA: vÃ¡lido solo en fechas de servicio o autorizaciÃ³n. En los
+      // campos que FL Medicaid Â§6.2.2 exige por meta, es un elemento
+      // requerido faltante. Ver TBD_* arriba.
+      if(pattern.contextual==='tbd'){
+        const kind=classifyTbdContext(text,m.index,m[0].length);
+        if(kind==='date'){tbdValid.push({index:m.index,match:m[0]});continue;}
+        if(kind==='required_field'){
+          findings.push({
+            id:uid(),
+            ruleId:'FL_GOAL_ELEMENT_TBD',
+            severity:'blocker',
+            category:'florida_medicaid',
+            description:`"${m[0]}" sustituye un elemento que la Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024, Â§6.2.2) exige para cada meta u objetivo: definiciÃ³n observable, procedimientos de observaciÃ³n y mediciÃ³n directa, nivel actual (lÃ­nea base), procedimientos de reducciÃ³n o adquisiciÃ³n, condiciones y criterio de dominio, fecha de introducciÃ³n, fecha estimada de dominio, plan de generalizaciÃ³n y reporte de progreso. La norma pide una fecha o un valor *estimado*, asÃ­ que no exige certeza: dejarlo en "${m[0]}" es un elemento faltante y puede motivar denegaciÃ³n.`,
+            matchedText:m[0],
+            context:extractContext(text,m.index,m[0].length),
+            position:m.index,
+            suggestedAction:'Per the Florida Medicaid Behavior Analysis Services Coverage Policy (December 2024), Section 6.2.2, every target, goal, and objective must state all required elements, including current level (baseline), date of introduction, and estimated date of mastery. Provide an estimated value or date \u2014 the policy requires an estimate, not a confirmed value. "TBD" is not acceptable for these fields.',
+            status:'open',
+            createdAt:Date.now()
+          });
+          continue;
+        }
+      }
       // Exempt ellipsis ("...") that appears inside a parenthetical list context —
       // e.g., "(ex. who, what..., etc.)" or "(e.g., A, B..., etc.)" — these are
       // informal list continuations in clinical writing, not unfinished placeholders.
@@ -2180,6 +2256,25 @@ function scanPlaceholders(text){
         createdAt:Date.now()
       });
     }
+  }
+  // Un solo recordatorio agregado, sin peso de cumplimiento, para los TBD que
+  // SÃ son convenciÃ³n vÃ¡lida (fechas que dependen de la autorizaciÃ³n o del
+  // servicio en ejecuciÃ³n). No es un hallazgo.
+  if(tbdValid.length){
+    const first=tbdValid[0];
+    findings.push({
+      id:uid(),
+      ruleId:'PLACEHOLDER_TBD_CONVENTION',
+      severity:'notice',
+      category:'documentation_convention',
+      description:`"TBD/TBA" aparece ${tbdValid.length} ${tbdValid.length===1?'vez':'veces'} en contexto de fechas de servicio o autorizaciÃ³n (inicio, perÃ­odo autorizado, prÃ³xima revisiÃ³n, alta). Eso es convenciÃ³n vÃ¡lida, no un placeholder sin completar ni un hallazgo de cumplimiento: la fecha depende de la autorizaciÃ³n o del servicio en ejecuciÃ³n. Solo confirme, antes de enviar, que las que ya se puedan concretar queden con su dato.`,
+      matchedText:first.match,
+      context:extractContext(text,first.index,first.match.length),
+      position:first.index,
+      suggestedAction:'No action required. "TBD" is an accepted convention for service and authorization dates that are not yet defined. Note that this exemption does not extend to goal-level fields, which Florida Medicaid Section 6.2.2 requires to be completed.',
+      status:'open',
+      createdAt:Date.now()
+    });
   }
   return findings;
 }
@@ -2717,6 +2812,7 @@ For each finding, decide a verdict:
    • A "missing section" flagged when the section is actually present under a different heading visible in the context.
    • A measurement "inconsistency" flagged because DIFFERENT behaviors use DIFFERENT measurement systems — that is standard practice (e.g., Task Refusal correctly measured as a percentage of refused/compliant responses over demands presented, while other behaviors are measured by occurrences/frequency or duration). Only a real issue if a SINGLE behavior's own system is internally inconsistent or undefined.
    • A baseline "error" or "contradiction" flagged against the hourly-probe convention: baseline reported as per-hour values across 2-3 days (e.g., 13, 15, 12) with the weekly incidence computed as the mean of those hourly values × weekly observation hours (e.g., × 30). That methodology is valid; only the arithmetic being off (>10%) is a real issue.
+   • A "TBD"/"TBA" flagged as an unfilled placeholder or as contamination when it marks a SERVICE or AUTHORIZATION date that is not yet defined (start date, authorization/service period, next review or reassessment date, discharge date, signature date). That is the accepted convention in this clinic: mark it false_positive with low confidence. This does NOT extend to goal-level fields — a "TBD" standing in for baseline/current level, date of introduction, estimated date of mastery, mastery criteria, measurement procedures, or the generalization plan is a REAL issue (Florida Medicaid Coverage Policy, December 2024, Section 6.2.2 requires all of those for every goal, as an estimate), and so is a "TBD" replacing the client's identity, a behavior's function, or an operational definition. Rate those valid with high confidence.
    • An AI finding that restates document content without an actual violation, or that contradicts what the context shows.
 - "uncertain" — cannot confirm from the available context; the analyst should verify.
 
@@ -3026,6 +3122,8 @@ CLINICAL DEPTH CHECKS (mark with appropriate severity):
 VALID MEASUREMENT CONVENTIONS — DO NOT FLAG (these are standard practice in this clinic and in Florida Medicaid ABA documentation; flagging them creates false positives that destroy trust in the audit):
 (a) MIXED MEASUREMENT SYSTEMS ACROSS BEHAVIORS ARE NORMAL. Task Refusal / noncompliance is correctly measured as a PERCENTAGE (e.g., percent of compliance or refusals over the number of demands presented), while other behaviors (aggression, elopement, tantrums, etc.) are measured by FREQUENCY/occurrences. Do NOT flag the document for using percentage for Task Refusal and occurrences for other behaviors — each system fits its behavior. Only flag a measurement system when it is genuinely inappropriate for that specific behavior's dimensions.
 (b) ONE-HOUR PROBE BASELINE CONVENTION. Baseline may be reported as 1-hour observation probes on 2-3 different days (e.g., "day 1: 13, day 2: 15, day 3: 12") — those per-hour values ARE the baseline. The WEEKLY incidence is then computed as the AVERAGE of those probes multiplied by the weekly observation hours (typically 30): e.g., avg(13,15,12)=13.33 → ≈400 per week. Do NOT flag the difference between per-hour probe values and the weekly figure as an arithmetic error or an internal contradiction — verify the math using this convention (average × weekly hours) before flagging anything, and if it checks out, it is correct.
+(c) "TBD" / "TBA" FOR SERVICE AND AUTHORIZATION DATES IS A VALID CONVENTION. In these documents "TBD"/"TBA" is how the analyst marks dates that genuinely depend on the authorization or on services still in execution: start date of services, authorization or service period, next review/reassessment date, discharge or transition date, signature date. Do NOT flag those as copy-paste contamination, as an unfilled placeholder, or as incompleteness.
+(c2) BUT "TBD" IS NOT ACCEPTABLE FOR GOAL-LEVEL REQUIRED ELEMENTS. The Florida Medicaid Behavior Analysis Services Coverage Policy (December 2024), Section 6.2.2, requires that EVERY target, goal, and objective state all of: definition in observable, measurable terms; direct observation and measurement procedures; current level (baseline); behavior reduction or acquisition procedures; conditions under which the behavior is to be demonstrated and mastery criteria; date of introduction; estimated date of mastery; plan for generalization; and timely reporting of progress. The same applies to caregiver-training goals. The policy asks for an ESTIMATED date and an estimated value, so uncertainty is not a justification: a "TBD" in any of those fields is a MISSING REQUIRED ELEMENT and must be flagged as a blocker citing Section 6.2.2, including for newly added behaviors or replacement skills in a reassessment. Likewise, "TBD" replacing the client's identity (name, date of birth, diagnosis), a behavior's hypothesized function, or an operational definition is always a real problem.
 2. Replacement-behavior functional misalignment: replacement skills that do not serve the same function as the behavior they replace (e.g., FCT for break request paired with an attention-maintained behavior).
 3. Internal contradictions — ALERT ONLY, NEVER PICK A SIDE: any behavior, skill, or metric described inconsistently across sections (e.g., mastered in one section, still active in another; different frequencies, functions, or schedules cited for the same item in different sections). CRITICAL RULE: when the document contradicts itself, you CANNOT know which version is correct — do NOT base any recommendation, correction, or rewrite on either version. The finding must (a) state that a contradiction exists, (b) quote or locate BOTH conflicting statements, and (c) in suggested_action, ask the analyst to decide which is correct and align the document to it — you may note which version seems more plausible and why, phrased explicitly as a suggestion, but the decision belongs to the analyst. Never generate corrective text that assumes one side of a contradiction.
 4. Intervention-function incompatibility: intervention procedures that do not match the hypothesized function of the behavior (e.g., NCR attention for escape-maintained behavior without pairing extinction; DRO for SIB without safety procedures).
@@ -4497,6 +4595,8 @@ const REPORT_CAT_LABELS={
     parent_training:'Parent training',
     'parent training':'Parent training',
     completeness:'Completeness',
+    documentation_convention:'Documentation convention (no action)',
+    'documentation convention':'Documentation convention (no action)',
     generalization:'Generalization',
     mastery_criteria:'Mastery criteria',
     'mastery criteria':'Mastery criteria',
