@@ -381,12 +381,14 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit}
       <button class="btn btn-secondary btn-small" onclick="generateCorrectedDocx()" title="Genera el .docx original con todas las correcciones aprobadas como control de cambios de Word." style="border-color:#1565C0;color:#1565C0">📝 Generar documento corregido</button>
       <button class="btn btn-secondary btn-small" onclick="runCoherenceRedesign()" id="redesignBtn" title="Para las conductas con incoherencia funcional (función ↔ reemplazo ↔ intervención), propone el rediseño estructural: el reemplazo funcionalmente equivalente correcto, con definición operacional e intervenciones congruentes, listo para pegar en el plan." style="border-color:#6A1B9A;color:#6A1B9A">🔧 Rediseñar pares incoherentes</button>
       <button class="btn btn-secondary btn-small" onclick="toggleWhatIf()" id="whatIfBtn" title="Antes de redactar: evalúe un reemplazo hipotético contra la función de la conducta. La IA indica si es funcionalmente equivalente y, si no, propone el correcto con su definición operacional e intervenciones congruentes." style="border-color:#00695C;color:#00695C">🔎 Verificar reemplazo (what-if)</button>
+      <button class="btn btn-secondary btn-small" onclick="toggleAppealLetter()" id="appealBtn" title="Si el pagador ya denegó: redacta el borrador de la apelación a partir de este assessment. Elige la estrategia según el tipo de denegación (administrativa, de cobertura o clínica) y avisa primero si el propio documento tiene blockers abiertos por los que el pagador pueda denegar otra vez." style="border-color:#AD1457;color:#AD1457">🧾 Apelar una denegación</button>
       <button class="btn btn-secondary btn-small" onclick="toggleReassessDiff()" id="diffBtn" title="Compara la estructura clínica de este documento con la de un plan anterior del mismo cliente: conductas retiradas (posible dominio), conductas nuevas y persistentes, cambios de reemplazo/función, y cambios de CPT/horas/supervisión. Añade una lectura say-do con IA." style="border-color:#00838F;color:#00838F">🔀 Comparar con plan anterior</button>
       <label style="font-size:12px;color:#5C5752;display:flex;align-items:center;gap:5px;cursor:pointer" title="Resalta en amarillo las inserciones dentro del control de cambios de Word para que destaquen. Desactívelo para entregar un redline limpio sin marca amarilla."><input type="checkbox" id="chkHL1" checked onchange="setHLPref(this.checked)"> Resaltar inserciones en amarillo</label>
       <span style="font-size:11px;color:#5C5752;font-style:italic">Apruebe → genere → revise en Word aceptando o rechazando cada cambio.</span>
     </div>
     <div id="whatIfPanel" class="hidden" style="margin-bottom:1rem"></div>
     <div id="diffPanel" class="hidden" style="margin-bottom:1rem"></div>
+    <div id="appealPanel" class="hidden" style="margin-bottom:1rem"></div>
     <div id="redesignPanel" style="margin-bottom:1rem"></div>
     <div id="docPreviewPanel" class="hidden" style="margin-bottom:1rem"></div>
     <div id="auditAlertBanner"></div>
@@ -426,6 +428,7 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit}
       <button class="btn btn-secondary" onclick="generateExecutiveBrief('docx')" title="Genera un resumen de 1-2 páginas con la puntuación, el veredicto, las prioridades principales, las revisiones sugeridas, los rediseños aprobados y los próximos pasos — para entregar junto al reporte completo." style="border-color:#37474F;color:#37474F">📰 Resumen ejecutivo (1-2 pág.)</button>
       <button class="btn btn-secondary" onclick="generateExecutiveDigest('docx')" title="Genera un resumen de UNA página con la puntuación, las áreas y las correcciones prioritarias principales, que remite al reporte completo para el detalle." style="border-color:#B36B00;color:#B36B00">📰 Resumen de 1 página</button>
       <button class="btn btn-secondary" onclick="generateMedicalNecessityBrief('docx')" title="Genera un documento profesional en inglés dedicado a la NECESIDAD MÉDICA, listo para pegar en el assessment: cubre los 5 elementos exigidos por Florida Medicaid §59G-4.125 más la justificación de las horas solicitadas, fundamentado en TODOS los factores del (re)assessment (CASP, BACB). Cero números inventados; marca lo no documentado." style="border-color:#AD1457;color:#AD1457">🩺 Necesidad médica (borrador)</button>
+      <button class="btn btn-secondary" onclick="switchTab('audit');setTimeout(toggleAppealLetter,60)" title="Si el pagador ya denegó: abre el redactor de la apelación en la pestaña de auditoría, donde están los hallazgos sobre los que se apoya." style="border-color:#AD1457;color:#AD1457">🧾 Apelar una denegación</button>
       <button class="btn btn-secondary" onclick="generateCorrectedDocx()" title="Aplica las correcciones aprobadas directamente sobre el .docx original con control de cambios de Word (redline). Solo para assessments subidos en .docx." style="border-color:#1565C0;color:#1565C0">📝 Documento corregido (control de cambios)</button>
       <label style="font-size:12px;color:#5C5752;display:flex;align-items:center;gap:5px;cursor:pointer" title="Resalta en amarillo las inserciones dentro del control de cambios de Word. Desactívelo para un redline limpio."><input type="checkbox" id="chkHL2" checked onchange="setHLPref(this.checked)"> Resaltar inserciones en amarillo</label>
     </div>
@@ -7241,6 +7244,332 @@ Output STRICT JSON only (no fences, no preamble):
   }catch(err){
     console.error('[Auditor] Medical necessity brief failed:',err);
     alert('No se pudo generar el documento de necesidad médica: '+(err&&err.message?err.message:String(err)));
+  }finally{
+    btns.forEach(b=>{b.disabled=false;if(b.dataset._t)b.textContent=b.dataset._t;});
+  }
+}
+
+/* ===== Modo carta de necesidad medica frente a una denegacion (apelacion) =====
+
+   Fuente de encuadre: Council of Autism Service Providers et al. (2021), "The
+   Health Insurance Appeals Guide: A Consumer Guide for Filing Autism Appeals".
+   Esa guia NO es estandar de practica ni es especifica de Florida, de modo que
+   NO genera reglas de auditoria. Aporta el encuadre, y el encuadre es lo que
+   este modo implementa:
+
+   1. LA DENEGACION TIENE TIPO, Y EL TIPO DECIDE LA ESTRATEGIA. Una denegacion
+      administrativa se corrige y se reenvia; discutir clinica ahi es perder el
+      turno. Una de cobertura se ataca con el texto del plan, no con clinica.
+      Solo la clinica ("no medicamente necesario") se responde con el
+      assessment. Escribir la carta equivocada para el tipo equivocado es el
+      error mas comun y el mas caro.
+
+   2. EL ASSESSMENT YA REDACTADO *ES* LA PRUEBA. En una denegacion clinica no se
+      inventa una justificacion nueva: se apoya en lo que el documento ya dice.
+      Si el assessment no declaro la severidad, no vinculo cada meta a un
+      hallazgo, no explico la falta de progreso o no justifico la intensidad,
+      en la apelacion ya no hay de donde sacarlo.
+
+   De (2) se sigue lo unico que esta herramienta puede hacer y un redactor
+   generico no: ANTES de escribir la carta, mirar la auditoria del propio
+   documento y avisar sobre que se esta por apelar. Si el assessment tiene
+   blockers abiertos, el pagador puede denegar otra vez por esos mismos huecos.
+   Eso es `appealPreflight`, y se muestra antes de gastar una llamada de IA.
+
+   Lo que este modo NO hace, deliberadamente: no afirma plazos legales. El plazo
+   lo fija el aviso de denegacion y varia por plan y por nivel. Se calcula los
+   dias transcurridos --aritmetica, verificable-- y se remite al aviso. */
+
+const APPEAL_DENIAL_TYPES=[
+  {id:'administrative', label:'Administrativa', hint:'Autorización vencida, código o modificador mal puesto, firma o documento faltante, plazo incumplido, datos del recipient incorrectos.',
+   strategy:'Corregir el defecto y reenviar. NO se argumenta necesidad médica: el pagador no discutió la clínica.'},
+  {id:'coverage', label:'De cobertura', hint:'El plan sostiene que el servicio no es un beneficio cubierto, o que está excluido del contrato.',
+   strategy:'Se responde con el texto del plan y la norma aplicable. La clínica es secundaria: primero hay que establecer que el servicio SÍ es un beneficio cubierto.'},
+  {id:'clinical', label:'Clínica (no médicamente necesario)', hint:'El pagador discute el juicio clínico: horas excesivas, falta de progreso, servicio no necesario.',
+   strategy:'Aquí el assessment es la prueba. Se responde con los cinco elementos de necesidad médica anclados en lo que el documento ya documenta.'}
+];
+
+const APPEAL_LEVELS=[
+  {id:'reconsideration', label:'Reconsideración / revisión interna del plan'},
+  {id:'plan_appeal', label:'Apelación ante el plan (nivel 1)'},
+  {id:'plan_appeal_2', label:'Apelación ante el plan (nivel 2)'},
+  {id:'fair_hearing', label:'Medicaid Fair Hearing (audiencia estatal)'},
+  {id:'external', label:'Revisión externa independiente'},
+  {id:'peer_to_peer', label:'Peer-to-peer con el revisor del pagador'}
+];
+
+// Dias transcurridos desde la fecha de denegacion. Aritmetica pura sobre una
+// fecha que entra el analista: es verificable y no depende de ninguna norma.
+// Devuelve null si la fecha falta o no es interpretable.
+function _appealDaysSince(dateStr){
+  if(!dateStr)return null;
+  const t=Date.parse(dateStr+'T00:00:00');
+  if(isNaN(t))return null;
+  const d=Math.floor((Date.now()-t)/86400000);
+  return d<0?null:d;
+}
+
+/* Preflight: que tan solido es el documento sobre el que se va a apelar.
+
+   Mira los hallazgos ABIERTOS de la auditoria vigente. Un hallazgo resuelto o
+   justificado por el analista ya no cuenta: el analista decidio sobre el. Los
+   blockers abiertos son huecos frente a un requisito de Florida que el pagador
+   puede volver a invocar, y por eso se citan CON su fila de la tabla de
+   requisitos cuando la fila esta verificada contra texto primario.
+
+   No bloquea la generacion. Avisa. La decision de apelar es de Rolando. */
+function appealPreflight(audit){
+  const findings=((audit&&audit.findings)||[]).filter(f=>f&&f.category!=='system'&&f.status==='open');
+  const pick=sev=>findings.filter(f=>f.severity===sev).map(f=>({
+    ruleId:f.ruleId||'',
+    description:f.description||'',
+    cita:(typeof citationFor==='function'?citationFor(f.ruleId):null)||null
+  }));
+  const blockers=pick('blocker');
+  const warnings=pick('warning');
+  // Se deduplica por regla: ocho metas sin fecha de dominio son un hueco, no ocho.
+  const dedupe=list=>{
+    const seen=new Set(),out=[];
+    for(const x of list){ const k=x.ruleId||x.description; if(seen.has(k))continue; seen.add(k); out.push(x); }
+    return out;
+  };
+  return {blockers:dedupe(blockers), warnings:dedupe(warnings), totalOpen:findings.length};
+}
+
+function toggleAppealLetter(){
+  const panel=document.getElementById('appealPanel');
+  const btn=document.getElementById('appealBtn');
+  if(!panel)return;
+  const showing=!panel.classList.contains('hidden');
+  if(showing){ panel.classList.add('hidden'); if(btn)btn.style.fontWeight=''; return; }
+  panel.classList.remove('hidden');
+  if(btn)btn.style.fontWeight='700';
+  panel.innerHTML=appealFormHTML();   // se reconstruye: el preflight depende de la auditoria vigente
+  panel.dataset.built='1';
+  panel.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function appealPreflightHTML(){
+  if(!state.currentAudit){
+    return `<div style="border:1px solid #EF6C00;background:#FFF8F0;border-radius:5px;padding:9px 12px;margin-bottom:12px;font-size:12px;color:#5C5752">
+      <strong style="color:#EF6C00">Sin auditoría de este documento.</strong> La carta se puede generar igual, pero no se sabe si el assessment sobre el que se apela tiene huecos que el pagador pueda volver a invocar. Conviene auditarlo antes.</div>`;
+  }
+  const pf=appealPreflight(state.currentAudit);
+  if(!pf.blockers.length&&!pf.warnings.length){
+    return `<div style="border:1px solid #2E7D32;background:#F1F8F1;border-radius:5px;padding:9px 12px;margin-bottom:12px;font-size:12px;color:#33691E">
+      <strong>Sin hallazgos abiertos.</strong> El assessment sobre el que se apela no tiene blockers ni warnings pendientes en la auditoría vigente.</div>`;
+  }
+  const row=(x,color)=>`<li style="margin-bottom:3px"><span style="color:${color};font-weight:600">${escapeHtml(x.description)}</span>${x.cita?` <span style="color:#5C5752">— ${escapeHtml(x.cita)}</span>`:''}</li>`;
+  return `<div style="border:1px solid #C62828;border-left:4px solid #C62828;background:#FFF5F5;border-radius:6px;padding:10px 13px;margin-bottom:12px">
+    <div style="font-weight:700;color:#C62828;font-size:12.5px;margin-bottom:3px">Antes de apelar: sobre qué documento se está apelando</div>
+    <div style="font-size:11.5px;color:#5C5752;margin-bottom:7px">El assessment que sustenta esta apelación tiene hallazgos abiertos. El pagador puede denegar otra vez por estos mismos huecos. Corregirlos antes de presentar es más barato que perder un nivel de apelación.</div>
+    ${pf.blockers.length?`<div style="font-size:11.5px;font-weight:700;color:#C62828;margin-bottom:2px">${pf.blockers.length} blocker(s) abierto(s)</div>
+      <ul style="margin:0 0 7px 16px;padding:0;font-size:11.5px">${pf.blockers.map(x=>row(x,'#C62828')).join('')}</ul>`:''}
+    ${pf.warnings.length?`<div style="font-size:11.5px;font-weight:700;color:#EF6C00;margin-bottom:2px">${pf.warnings.length} warning(s) abierto(s)</div>
+      <ul style="margin:0 0 0 16px;padding:0;font-size:11.5px">${pf.warnings.slice(0,6).map(x=>row(x,'#EF6C00')).join('')}${pf.warnings.length>6?`<li style="color:#5C5752">y ${pf.warnings.length-6} mas</li>`:''}</ul>`:''}
+  </div>`;
+}
+
+// Muestra la estrategia correspondiente al tipo de denegacion elegido. Va en una
+// funcion con nombre y no en el atributo onchange: el handler inline tendria que
+// escapar el "<" del bucle dentro del HTML generado.
+function appealShowHint(v){
+  const ns=document.querySelectorAll('.appealHint');
+  for(let i=0;i<ns.length;i++){ ns[i].style.display=(ns[i].getAttribute('data-for')===v)?'block':'none'; }
+}
+
+function appealFormHTML(){
+  const canon=(state.currentDoc&&state.currentDoc.canonical)||{};
+  const cptPre=(canon.cpt||[]).map(c=>`${c.code||''}${c.modifier?(' '+c.modifier):''}${c.hoursPerWeek!=null?(' — '+c.hoursPerWeek+' h/wk'):''}`).join(', ');
+  const types=APPEAL_DENIAL_TYPES.map(t=>`<option value="${t.id}">${escapeHtml(t.label)}</option>`).join('');
+  const levels=APPEAL_LEVELS.map(l=>`<option value="${l.id}">${escapeHtml(l.label)}</option>`).join('');
+  const hints=APPEAL_DENIAL_TYPES.map(t=>`<div class="appealHint" data-for="${t.id}" style="display:none;font-size:11.5px;color:#5C5752;margin-top:5px;background:#fafafa;border:1px solid #e5e5e5;border-radius:4px;padding:7px 10px"><strong>${escapeHtml(t.label)}:</strong> ${escapeHtml(t.hint)}<div style="margin-top:3px;color:#880E4F"><strong>Estrategia:</strong> ${escapeHtml(t.strategy)}</div></div>`).join('');
+  return `<div style="border:1px solid #f0c0d4;border-left:4px solid #AD1457;border-radius:6px;background:#fdf6f9;padding:14px 16px">
+    <div style="font-size:13px;font-weight:700;color:#880E4F;margin-bottom:2px">🧾 Carta de necesidad médica frente a una denegación</div>
+    <div style="font-size:11.5px;color:#5C5752;margin-bottom:11px">Toma el assessment ya auditado y redacta el borrador de la apelación. Distinto del botón "Necesidad médica (borrador)", que escribe la sección prospectiva para pegar <em>dentro</em> del assessment; esto responde a una denegación ya emitida.</div>
+    ${appealPreflightHTML()}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><label class="label" style="font-size:12px">Tipo de denegación <span class="required">*</span></label>
+        <select id="apType" class="input" onchange="appealShowHint(this.value)">
+          <option value="">— Seleccione —</option>${types}</select></div>
+      <div><label class="label" style="font-size:12px">Nivel de la apelación</label>
+        <select id="apLevel" class="input">${levels}</select></div>
+    </div>
+    ${hints}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px">
+      <div><label class="label" style="font-size:12px">Pagador / plan</label>
+        <input type="text" id="apPayer" class="input" placeholder="p. ej., Sunshine Health"></div>
+      <div><label class="label" style="font-size:12px">N.º de caso / autorización</label>
+        <input type="text" id="apCase" class="input" placeholder="p. ej., AUTH-123456"></div>
+      <div><label class="label" style="font-size:12px">Fecha del aviso de denegación</label>
+        <input type="date" id="apDate" class="input" onchange="renderAppealClock()"></div>
+    </div>
+    <div id="apClock"></div>
+    <div style="margin-top:10px"><label class="label" style="font-size:12px">Razón citada por el pagador <span class="required">*</span></label>
+      <textarea id="apReason" class="input" rows="3" placeholder="Pegue textualmente lo que dice el aviso de denegación. Literal: la carta responde a esa razón, no a una paráfrasis."></textarea></div>
+    <div style="margin-top:10px"><label class="label" style="font-size:12px">Servicios / códigos denegados</label>
+      <input type="text" id="apCodes" class="input" value="${escapeHtml(cptPre)}" placeholder="p. ej., 97153 — 25 h/wk"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
+      <button class="btn btn-small" id="apRunBtn" onclick="generateAppealLetter('docx')" style="background:#AD1457;color:#fff;border-color:#AD1457;font-weight:600">Generar carta (.docx)</button>
+      <button class="btn btn-secondary btn-small" onclick="generateAppealLetter('html')" style="border-color:#AD1457;color:#AD1457">Generar carta (HTML)</button>
+    </div>
+    <div style="font-size:11px;color:#5C5752;font-style:italic;margin-top:9px">Borrador. El plazo para presentar lo fija el aviso de denegación, no esta herramienta. El BCBA verifica cada afirmación contra el (re)assessment y conserva la responsabilidad clínica y legal.</div>
+  </div>`;
+}
+
+// Reloj de dias transcurridos. Cuenta dias --eso es verificable-- y remite el
+// plazo al aviso. NO afirma un numero de dias de plazo: varia por plan y por
+// nivel, y no esta verificado contra texto primario en este proyecto.
+function renderAppealClock(){
+  const el=document.getElementById('apClock');
+  if(!el)return;
+  const v=(document.getElementById('apDate')||{}).value||'';
+  const d=_appealDaysSince(v);
+  if(d===null){el.innerHTML='';return;}
+  const warn=d>45;
+  el.innerHTML=`<div style="margin-top:8px;font-size:11.5px;border-radius:4px;padding:7px 10px;border:1px solid ${warn?'#EF6C00':'#cfe0dc'};background:${warn?'#FFF8F0':'#f4f8f7'};color:#5C5752">
+    Han pasado <strong>${d}</strong> día(s) desde el aviso de denegación.${warn?' <strong style="color:#EF6C00">Verifique el plazo en el propio aviso antes de continuar</strong> — el plazo lo fija el plan y el nivel de apelación, y presentar fuera de término cierra la vía.':' El plazo aplicable está indicado en el aviso.'}</div>`;
+}
+
+async function generateAppealLetter(format){
+  if(!state.currentDoc){alert('No hay documento activo. Seleccione el assessment que sustenta la apelación.');return;}
+  if(!state.apiKey){alert('Se requiere la clave de API de Anthropic.');return;}
+  const type=((document.getElementById('apType')||{}).value)||'';
+  const reason=(((document.getElementById('apReason')||{}).value)||'').trim();
+  if(!type){alert('Indique el tipo de denegación. De él depende la estrategia de la carta: una denegación administrativa no se responde con argumentos clínicos.');return;}
+  if(!reason){alert('Pegue la razón citada por el pagador. La carta responde a esa razón literal.');return;}
+  const level=((document.getElementById('apLevel')||{}).value)||'plan_appeal';
+  const payer=(((document.getElementById('apPayer')||{}).value)||'').trim();
+  const caseNo=(((document.getElementById('apCase')||{}).value)||'').trim();
+  const denialDate=((document.getElementById('apDate')||{}).value)||'';
+  const codes=(((document.getElementById('apCodes')||{}).value)||'').trim();
+
+  const client=state.clients.find(c=>c.id===state.activeClientId);
+  const canon=state.currentDoc.canonical||{};
+  const docText=(state.currentDoc.text||'').slice(0,120000);
+  const typeObj=APPEAL_DENIAL_TYPES.find(t=>t.id===type)||{};
+  const levelObj=APPEAL_LEVELS.find(l=>l.id===level)||{};
+  const pf=state.currentAudit?appealPreflight(state.currentAudit):{blockers:[],warnings:[],totalOpen:0};
+
+  const btns=document.querySelectorAll('[onclick^="generateAppealLetter"]');
+  btns.forEach(b=>{b.disabled=true;b.dataset._t=b.textContent;b.textContent='Generando…';});
+  try{
+    const strategyBlock={
+      administrative:`DENIAL TYPE: ADMINISTRATIVE. The payer did NOT dispute clinical judgment. Do NOT argue medical necessity at length — that concedes a fight the payer did not pick and wastes the appeal level. Identify the administrative defect named in the payer's reason, state precisely what is being corrected or supplied, and request reprocessing. Keep any clinical content to one short paragraph establishing that the underlying service remains supported by the assessment on file.`,
+      coverage:`DENIAL TYPE: COVERAGE. The payer asserts the service is not a covered benefit. The argument is contractual and regulatory FIRST: establish that behavior analysis services are a covered Florida Medicaid benefit under the Behavior Analysis Services Coverage Policy incorporated by Rule 59G-4.125, F.A.C., and that the services at issue fall inside that benefit rather than inside the policy's non-covered list. Clinical content is SECONDARY and supports that the service delivered is in fact the covered service. Do not concede the coverage question by arguing only medical necessity.`,
+      clinical:`DENIAL TYPE: CLINICAL (not medically necessary). This is where the assessment is the evidence. Rebut the payer's stated clinical reason point by point, and cover each of the five Florida Medicaid medical-necessity elements — functional impairment in daily activities; safety risk to self or others; escalation trajectory without treatment; ABA as the evidence-based approach for the documented behaviors and functions; least-restrictive setting — each anchored in what THIS assessment documents. Then justify the requested intensity from the documented clinical picture.`
+    }[type]||'';
+
+    const weaknessBlock=(pf.blockers.length||pf.warnings.length)?`
+INTERNAL AUDIT OF THE SUPPORTING ASSESSMENT — these are gaps the auditor found in the very document this appeal rests on. The payer may invoke them to deny again. DO NOT mention them in the letter, DO NOT apologize for them, and DO NOT invent content to paper over them. Use them ONLY to decide what NOT to overclaim, and list anything the letter cannot support because of them under "gaps".
+Open blockers: ${pf.blockers.map(b=>b.description).join(' | ')||'none'}
+Open warnings: ${pf.warnings.map(b=>b.description).join(' | ')||'none'}`:'';
+
+    const prompt=`You are a Board-Certified Behavior Analyst (BCBA) drafting an APPEAL LETTER responding to a payer's denial of ABA services for a SINGLE client under Florida Medicaid / managed care. The output is a professional ENGLISH letter the analyst will review, sign and submit.
+
+ABSOLUTE GROUNDING RULE — ZERO FABRICATION: Use ONLY information present in the assessment document and the extracted structure below. NEVER invent any number — no frequencies, durations, counts, trials, percentages, rates, hours, dates or unit totals. NEVER invent a clinical fact, a test score, a diagnosis or a service date. If something a strong appeal would need is not documented, do NOT write it: list it under "gaps" for the BCBA to supply. Inventing data in an appeal is fraud risk and destroys credibility with the reviewer.
+
+CITATION RULE: cite ONLY from the verified source list below, and cite the standard and edition as given. NEVER invent a section number, a page, a case number or a regulatory citation that is not in that list. If you need authority that is not listed, describe the requirement without a pinpoint citation.
+
+DEADLINE RULE: do NOT state any filing deadline, number of days, or timeliness rule as fact. The governing deadline is stated in the payer's own notice. You may state that the appeal is submitted within the timeframe set out in the notice of adverse benefit determination dated as given.
+
+PROHIBITED TERMINOLOGY (never use, not even in paraphrase): sensory, sensory stimulation/activities/tools/strategies, relaxation, relax, calming, calm, staying/remains calm, counting, deep breathing, breathing techniques, self-regulation, self-soothing, coping, mindfulness, meditation, yoga, problem solving, conflict resolution, social stories/narratives, anger management, self-de-escalation, gradual/systematic exposure, systematic desensitization, dealing with feelings, empathy, art therapy, frustration/frustrated, stress, anxiety/anxious, upset, overwhelm/overwhelmed, confusion, response cost, and any emotional or mentalistic language (understanding, comprehension, awareness, improved, mastery, feels, wants). Write in observable, measurable, function-based ABA terms, third person.
+
+${strategyBlock}
+
+APPEAL LEVEL: ${levelObj.label||level}
+PAYER: ${payer||'not stated'}
+CASE / AUTHORIZATION NUMBER: ${caseNo||'not stated'}
+DATE OF DENIAL NOTICE: ${denialDate||'not stated'}
+SERVICES / CODES DENIED: ${codes||'not stated'}
+PAYER'S STATED REASON FOR DENIAL (verbatim — respond to THIS, not to a paraphrase):
+"""
+${reason}
+"""
+${weaknessBlock}
+
+VERIFIED SOURCES — CITE ONLY FROM THIS LIST:
+${typeof verifiedSourcesForPrompt==='function'?verifiedSourcesForPrompt():''}
+
+EXTRACTED CLINICAL STRUCTURE (JSON): ${JSON.stringify({client:canon.client||null,behaviors:(canon.behaviors||[]).map(b=>({name:b.name,topography:b.topography,function:b.function,functionSource:b.functionSource,replacements:(b.replacements||[]).map(r=>r.name),interventions:b.interventions})),caregiverGoals:canon.caregiverGoals||[],cpt:canon.cpt||[],supervision:canon.supervision||null})}
+SUPPORTING ASSESSMENT DOCUMENT TEXT (verbatim, may be truncated):
+"""
+${docText}
+"""
+
+Output STRICT JSON only (no fences, no preamble):
+{
+ "subject": "one-line subject for the letter, e.g. 'Appeal of Adverse Benefit Determination — <case no> — <client initials>'",
+ "opening": "opening paragraph: who is appealing, on whose behalf, what determination is being appealed, and that it is submitted within the timeframe stated in the notice",
+ "denial_restatement": "one short paragraph restating the payer's stated reason neutrally and accurately, so the reviewer sees it is being answered directly",
+ "sections": [
+   {"title":"section heading appropriate to THIS denial type","body":"professional English paragraph(s), grounded, no invented numbers"}
+ ],
+ "requested_action": "the specific relief requested: overturn, authorize the named codes at the documented intensity, reprocess, or schedule peer-to-peer — matched to the denial type and appeal level",
+ "enclosures": ["each document the analyst should attach, named from what this assessment actually references — empty array if none"],
+ "standards_note": "1-2 sentences citing ONLY from the verified source list",
+ "gaps": ["each item a strong appeal at this level would need that is NOT documented in this assessment and must be supplied by the BCBA — empty array if none"]
+}`;
+
+    const data=await callClaudeMessages({model:'claude-sonnet-5',max_tokens:6000,messages:[{role:'user',content:prompt}]},{label:'appeal-letter'});
+    const raw=(data.content||[]).map(b=>b.text||'').join('\n');
+    let cleaned=raw.replace(/```(?:json)?\s*\n?/g,'').replace(/\n?```\s*$/g,'').trim();
+    const si=cleaned.indexOf('{'); if(si>0)cleaned=cleaned.slice(si);
+    const ei=cleaned.lastIndexOf('}'); if(ei!==-1)cleaned=cleaned.slice(0,ei+1);
+    let r; try{r=JSON.parse(cleaned);}catch(err){throw new Error('No se pudo interpretar la respuesta de la carta de apelación.');}
+    try{commitUsageToAudit();renderUsagePanel();}catch(_){}
+
+    // Red de seguridad: se muestra, no se descarta en silencio, cualquier termino
+    // vetado que se haya colado en la prosa generada.
+    const vetoScan=[r.opening,r.denial_restatement,r.requested_action,r.standards_note]
+      .concat((r.sections||[]).map(s=>s&&s.body)).map(firstVetoedOutputTerm).filter(Boolean);
+    const vetoed=Array.from(new Set(vetoScan));
+
+    const P=s=>escapeHtml(s||'').replace(/\n/g,'<br>');
+    const sectionsHTML=(r.sections||[]).map(s=>`
+      <h2 style="font-size:14.5px;margin:14px 0 4px;color:#880E4F">${escapeHtml(s.title||'')}</h2>
+      <p style="margin:0 0 6px">${P(s.body)}</p>`).join('');
+    const gaps=(r.gaps||[]).filter(Boolean);
+    const gapsHTML=gaps.length?`<div style="border:1px solid #C62828;background:#FFF5F5;border-radius:6px;padding:10px 14px;margin-top:14px">
+      <div style="font-weight:700;color:#C62828;font-size:13px;margin-bottom:4px">Datos no documentados — a completar por el BCBA (no se inventaron)</div>
+      <ul style="margin:0 0 0 16px;padding:0;font-size:12.5px;color:#5C5752">${gaps.map(g=>`<li>${escapeHtml(g)}</li>`).join('')}</ul></div>`:'';
+    const encl=(r.enclosures||[]).filter(Boolean);
+    const enclHTML=encl.length?`<p style="margin:12px 0 0;font-size:12.5px"><strong>Enclosures:</strong><br>${encl.map(e=>escapeHtml(e)).join('<br>')}</p>`:'';
+    const vetoHTML=vetoed.length?`<div style="border:2px solid #C62828;background:#FFF5F5;border-radius:6px;padding:10px 14px;margin-top:14px">
+      <div style="font-weight:700;color:#C62828;font-size:13px;margin-bottom:4px">Términos vetados detectados — reformule antes de enviar</div>
+      <div style="font-size:12.5px;color:#5C5752">El borrador contiene lenguaje prohibido por el rulebook: <strong>${vetoed.map(escapeHtml).join(', ')}</strong>. Reformúlelo en términos observables y funcionales antes de presentar esta carta.</div></div>`:'';
+    const pfHTML=(pf.blockers.length)?`<div style="border:2px solid #C62828;background:#FFF5F5;border-radius:6px;padding:10px 14px;margin-top:14px">
+      <div style="font-weight:700;color:#C62828;font-size:13px;margin-bottom:4px">Aviso interno — NO forma parte de la carta</div>
+      <div style="font-size:12.5px;color:#5C5752;margin-bottom:4px">El assessment que sustenta esta apelación tiene ${pf.blockers.length} blocker(s) abierto(s) en la auditoría. El pagador puede denegar otra vez por estos huecos:</div>
+      <ul style="margin:0 0 0 16px;padding:0;font-size:12px;color:#5C5752">${pf.blockers.map(b=>`<li>${escapeHtml(b.description)}${b.cita?` — ${escapeHtml(b.cita)}`:''}</li>`).join('')}</ul>
+      <div style="font-size:12px;color:#C62828;margin-top:5px">Elimine esta caja antes de enviar.</div></div>`:'';
+    const date=new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+    const trace=(typeof auditTraceLine==='function')?auditTraceLine(state.currentAudit):'';
+    const body=`
+      <h1 style="margin-bottom:2px">${escapeHtml(r.subject||'Appeal of Adverse Benefit Determination')}</h1>
+      <p class="meta-line">${escapeHtml(typeObj.label||type)} · ${escapeHtml(levelObj.label||level)} · Client: ${escapeHtml(client?client.clientCode:'')} · ${date}</p>
+      <p class="meta-line">Payer: ${escapeHtml(payer||'—')} · Case: ${escapeHtml(caseNo||'—')} · Denial notice: ${escapeHtml(denialDate||'—')} · Services: ${escapeHtml(codes||'—')}</p>
+      ${r.opening?`<p style="margin:12px 0 6px">${P(r.opening)}</p>`:''}
+      ${r.denial_restatement?`<div style="border-left:3px solid #999;padding-left:11px;margin:10px 0;color:#333"><p style="margin:0">${P(r.denial_restatement)}</p></div>`:''}
+      ${sectionsHTML}
+      ${r.requested_action?`<h2 style="font-size:14.5px;margin:14px 0 4px;color:#880E4F">Requested Action</h2><p style="margin:0 0 6px">${P(r.requested_action)}</p>`:''}
+      ${r.standards_note?`<p style="margin:10px 0 0;font-size:12.5px;color:#5C5752"><em>${P(r.standards_note)}</em></p>`:''}
+      ${enclHTML}
+      ${vetoHTML}
+      ${pfHTML}
+      ${gapsHTML}
+      <p style="font-size:11.5px;color:#5C5752;margin-top:14px;font-style:italic">Borrador generado con asistencia de IA a partir del assessment y su estructura extraída. No contiene datos numéricos inventados; los faltantes se listan arriba. No afirma plazos: el plazo aplicable consta en el aviso de denegación. El BCBA verifica cada afirmación, firma y conserva la responsabilidad clínica y legal.${trace?` ${escapeHtml(trace)}.`:''}</p>`;
+    const fullHTML=`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><style>
+      body{font-family:Georgia,'Times New Roman',serif;line-height:1.5;color:#1a1a1a;max-width:820px;margin:0 auto;padding:1.5rem}
+      h1{color:#0e4d45;font-size:19px;border-bottom:2px solid #0e4d45;padding-bottom:5px}
+      .meta-line{font-family:'Courier New',monospace;font-size:11px;color:#5c5752;margin:2px 0}
+    </style></head><body>${body}</body></html>`;
+    const base=`Appeal_${type}_${client?client.clientCode:'client'}_${Date.now()}`;
+    if(format==='docx')exportDocx(fullHTML,base);
+    else triggerBlobDownload(new Blob([fullHTML],{type:'text/html'}),base+'.html');
+  }catch(err){
+    console.error('[Auditor] Appeal letter failed:',err);
+    alert('No se pudo generar la carta de apelación: '+(err&&err.message?err.message:String(err)));
   }finally{
     btns.forEach(b=>{b.disabled=false;if(b.dataset._t)b.textContent=b.dataset._t;});
   }
