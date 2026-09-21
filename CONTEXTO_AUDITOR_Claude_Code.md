@@ -79,6 +79,8 @@ Barra "Flujo de corrección" en la pestaña de auditoría:
 - **🔧 Rediseñar pares incoherentes** (`runCoherenceRedesign`, ~3876): para conductas con reemplazo desalineado, sin reemplazo, o nombradas en hallazgos de coherencia abiertos → una pasada de IA propone {reemplazo funcionalmente equivalente + definición operacional + intervenciones congruentes + rationale ES + paste_block EN}. Si la función fue inferida → marca roja "verificar FAST/MAS". Aprobación por conducta; persiste en `audit.redesigns`; los aprobados entran a la hoja de correcciones.
 - **📋 Hoja de correcciones** (`generateCorrectionSheet`, ~4581): 3 secciones — Rediseños estructurales, Reemplazos directos (tabla buscar→reemplazar), Edición manual. Se genera aunque solo haya rediseños.
 - **📰 Resumen ejecutivo (1-2 pág.)** (`generateExecutiveBrief`, ~4498): score+banda, chips, top 18 rojos por confianza (con página), top 8 naranjas, rediseños aprobados, próximos pasos, alerta de IA.
+- **🧾 Apelar una denegación** (`toggleAppealLetter` / `generateAppealLetter`): redacta el borrador de la carta de apelación cuando el pagador **ya denegó**. Distinto de **🩺 Necesidad médica (borrador)** (`generateMedicalNecessityBrief`), que escribe la sección *prospectiva* para pegar **dentro** del assessment. Ver §5.1.
+
 - **`extractSentenceAt`** (~4454): expande a la oración completa para el "buscar" de rewrites. **Recorta títulos/encabezados en MAYÚSCULAS** pegados al inicio (regex `/^([A-Z][A-Z0-9\s\-–—:&\/()',]{6,}?)\s*(?=[A-Z][a-z])/`) — bug histórico: borraba "BEHAVIOR ANALYSIS ASSESSMENT" del documento.
 
 **Reportes:** `buildReportHTML` — orden: aviso de IA → Resumen ejecutivo → score (fórmula saturante) → chips (etiquetas EN, `CAT_LABELS` con lookup normalizado espacio/guión bajo) → **hallazgos (rojos primero)** → estructura clínica extraída → justificaciones → apoyo de redacción → declaración del consultor. **TODOS los colores en estilos inline con hex** (Word y el HTML standalone descartan clases CSS). Selector de idioma: bilingüe (default) o "Todo en inglés" (`translateReportToEnglish`). Export docx vía html-docx-js (MHT/altChunk) con `resolveCssVars`.
@@ -90,6 +92,34 @@ score    = max(1, round(100 * 80 / (80 + weighted)))   // saturante, nunca 0
 Bandas: ≥90 Listo/casi · ≥72 Ajustes menores · ≥50 Requiere correcciones · <50 Priorizar rojos
 ```
 Es un **indicador de avance** (sube al atender hallazgos), no una calificación del analista. La lineal anterior daba 0/100 con ~20 rojos → humillante e ininformativa.
+
+---
+
+### 5.1 Modo apelación (`generateAppealLetter`) — encuadre del CASP Appeals Guide
+
+Fuente: *The Health Insurance Appeals Guide* (CASP et al., 2021). **No es estándar de práctica ni es específica de Florida: no genera reglas de auditoría.** Aporta encuadre, y el encuadre es lo que este modo implementa.
+
+**1. La denegación tiene tipo, y el tipo decide la estrategia** (`APPEAL_DENIAL_TYPES`). El prompt se ramifica; escribir la carta equivocada para el tipo equivocado quema un nivel de apelación.
+
+| Tipo | Estrategia que impone el prompt |
+|---|---|
+| **Administrativa** | Corregir el defecto y reenviar. Prohibido argumentar necesidad médica largo: el pagador no discutió la clínica. |
+| **De cobertura** | Primero contractual/regulatorio (BA es beneficio cubierto bajo la Regla 59G-4.125, F.A.C.); la clínica es secundaria. No conceder la cuestión de cobertura argumentando solo necesidad médica. |
+| **Clínica** | Aquí el assessment **es** la prueba: rebatir punto por punto la razón citada + los cinco elementos de necesidad médica + justificación de intensidad, todo anclado en lo documentado. |
+
+**2. El assessment ya redactado es la prueba** → de ahí `appealPreflight(audit)`, lo único que esta herramienta puede hacer y un redactor genérico no: **antes** de gastar una llamada de IA, mira los hallazgos **abiertos** de la auditoría vigente y avisa sobre qué documento se está apelando. Blockers abiertos = huecos por los que el pagador puede denegar otra vez, citados con su fila de `AUDIT_REQUIREMENTS` cuando está verificada contra texto primario.
+
+- Solo `status==='open'`: lo resuelto o justificado ya lo decidió el analista.
+- **Deduplica por `ruleId`**: ocho metas sin fecha de dominio son *un* hueco, no ocho.
+- **Avisa, no bloquea.** La decisión de apelar es de Rolando.
+- Los huecos entran al prompt como `weaknessBlock` con instrucción explícita de **no mencionarlos en la carta, no disculparse y no inventar contenido para taparlos** — solo para no sobreafirmar. Lo que la carta no pueda sostener va a `gaps`.
+- Si hay blockers, el documento generado lleva una caja **"Aviso interno — NO forma parte de la carta"** marcada *"Elimine esta caja antes de enviar"*.
+
+**Lo que el modo NO hace, deliberadamente: no afirma plazos.** El plazo lo fija el aviso de denegación y varía por plan y por nivel; no está verificado contra texto primario en este proyecto. `_appealDaysSince` cuenta **días transcurridos** (aritmética pura, verificable) y a >45 días remite al aviso. El prompt lleva `DEADLINE RULE: do NOT state any filing deadline`.
+
+**Resto de invariantes heredados:** cero fabricación de números; `CITATION RULE` citando solo desde `verifiedSourcesForPrompt()`; red de `firstVetoedOutputTerm` que **muestra** el término vetado en vez de descartar en silencio; sello de `auditTraceLine`; pie que declara borrador con IA y que el BCBA firma y conserva la responsabilidad clínica y legal.
+
+`AUDITOR_RULES_VERSION` **no se incrementa**: este modo no cambia ninguna regla de auditoría ni altera un solo hallazgo.
 
 ---
 
