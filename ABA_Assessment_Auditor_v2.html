@@ -1801,6 +1801,7 @@ async function runAudit(){
     findings=findings.concat(scanProceduralFidelity(text,state.currentDoc.docType));
     findings=findings.concat(scanAssessmentDomains(text,state.currentDoc.docType));
     findings=findings.concat(scanPayerDates(text,state.currentDoc.docType));
+    findings=findings.concat(scanCdeSeparate(text,state.currentDoc.docType));
     findings=findings.concat(scanGoalsNotDsmCriteria(text,state.currentDoc.docType));
     findings=findings.concat(scanClientAssent(text,state.currentDoc.docType));
     findings=findings.concat(scanGoalAssessmentLink(text,state.currentDoc.docType));
@@ -2755,6 +2756,17 @@ const AUDIT_REQUIREMENTS=[
   {id:'MOL_PLAN_COVERS_PERIOD', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'2 y 3', verificacion:'primaria', severidad:'blocker',
    requisito:'El behavior plan debe cubrir todo el periodo de autorizacion solicitado, hasta seis meses.',
    reglas:['MOL_PLAN_COVERS_PERIOD']},
+  {id:'MOL_CDE_REQUIRED', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'secc. 1, Who Can Perform a CDE / Required Elements', verificacion:'primaria', severidad:'warning',
+   requisito:'Toda autorizacion inicial exige una evaluacion diagnostica integral (CDE) hecha por un profesional de una lista cerrada (PCP de familia, medicina interna o pediatria; medico de pediatria del desarrollo y del comportamiento, neurodesarrollo, neurologia pediatrica o psiquiatria; psicologo infantil PhD o PsyD; psicologo escolar LICENCIADO -el no licenciado no puede hacerla-; o equipo multidisciplinario dirigido por uno de ellos). El diagnostico debe enunciarlo el profesional evaluador de forma explicita: la puntuacion de un instrumento de cribado como el CARS o el ADOS no constituye un diagnostico formal, y las cartas escolares de acomodaciones por si solas no bastan.',
+   reglas:['MOL_CDE_NOT_REFERENCED','MOL_CDE_DX_FROM_TOOL','MOL_CDE_PRACTITIONER_UNCLEAR','MOL_CDE_SCHOOL_LETTER'],
+   nota:'El auditor ve un solo documento, no el paquete: por eso estas reglas piden verificar y no bloquean. Solo se comprueba lo que el behavior assessment dice sobre la procedencia del diagnostico, nunca el contenido del CDE, que es otro archivo.'},
+  {id:'MOL_CDE_VS_BEHAVIOR_ASSESSMENT', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'secc. 1, CDE vs. Behavior Assessment', verificacion:'primaria', severidad:'blocker',
+   requisito:'El CDE y el behavior assessment son dos requisitos SEPARADOS. Un CDE, incluso uno que contenga puntuaciones Vineland-3 o BASC-3 dentro de la evaluacion diagnostica, no satisface el requisito de AHCA de un behavior assessment enviado con la solicitud: hacen falta los informes de puntuacion completos de Vineland-3 y BASC-3 PRQ administrados y puntuados por el proveedor de BA. Ambos documentos se exigen; uno no reemplaza al otro. Estos instrumentos nunca se usan para construir el FBA ni el BIP.',
+   reglas:['MOL_CDE_SUBSTITUTION','MOL_VINELAND_NOT_FBA']},
+  {id:'MOL_CDE_SEVERITY_CONTEXT', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'secc. 1 y 2, What Distinguishes a Thorough CDE / CDE-Related Snags', verificacion:'primaria', severidad:'warning',
+   requisito:'Entre las causas frecuentes de devolucion estan no especificar el nivel de severidad del DSM-5 para el TEA (nivel 1, 2 o 3) con los apoyos que requiere, porque su ausencia deja sin fundamento diagnostico la intensidad solicitada, y describir el deterioro funcional en un solo entorno o en ninguno: un diagnostico sin deterioro funcional documentado no establece por si solo la necesidad de servicios intensivos.',
+   reglas:['MOL_DSM5_SEVERITY_MISSING','MOL_IMPAIRMENT_ONE_SETTING'],
+   nota:'Salen de la lista de causas de devolucion, no de la de elementos obligatorios: por eso warning y notice, nunca blocker.'},
   {id:'CPT_UNIT_MATH', fuente:'Convencion del consultorio y fee schedule de Florida', edicion:'-', seccion:'-', verificacion:'convencion', severidad:'blocker',
    requisito:'Unidades = horas por semana x 4 unidades por hora x 26 semanas para un periodo de autorizacion de seis meses.',
    reglas:['CPT_UNITS_MATH'],
@@ -4235,6 +4247,235 @@ function scanPayerDates(text,docType,now){
       `El plan de conducta cubre hasta ${new Date(rangoPlan.fin).toLocaleDateString('es')}, pero el período de autorización llega hasta ${new Date(rangoAuth.fin).toLocaleDateString('es')}: quedan ${faltan} días sin cubrir. ${P} devuelve las solicitudes cuyo plan no cubre todo el período solicitado (hasta seis meses).`,
       'Extend the behavior plan so that it covers the full authorization period being requested, up to six months.',
       rangoPlan.texto);
+  }
+
+  return findings;
+}
+
+/* ============================================================
+   EL CDE COMO DOCUMENTO SEPARADO  (Molina, QRG secc. 1 y 2)
+   ============================================================
+   El principio que gobierna todo este bloque, y la razon de que casi nada
+   aqui sea blocker:
+
+   EL AUDITOR NO VE EL PAQUETE. Ve UN texto extraido: el behavior assessment
+   o la reevaluacion. El CDE es otro archivo, que puede existir perfectamente
+   sin aparecer en este texto. Por eso el bloque NO afirma nunca "falta el
+   CDE": solo puede afirmar cosas sobre el documento que tiene delante.
+
+   De ahi la division en dos clases de regla:
+
+   a) CONCLUYENTES (blocker). El defecto esta EN ESTE TEXTO: el documento
+      declara que la evaluacion diagnostica cubre el requisito del behavior
+      assessment, o que las puntuaciones Vineland-3 / BASC-3 del CDE son la
+      base del FBA o del BIP. Molina lo niega de forma explicita: "Both
+      documents are required; one does not replace the other" y "these
+      instruments are never used to construct the FBA or BIP". Aqui no hay
+      nada que el paquete pueda salvar: lo escrito ya es el error.
+
+   b) NO CONCLUYENTES (warning / notice). El documento no menciona algo. Eso
+      NO prueba que falte en el paquete, igual que en MOL_PLAN_DATE_MISSING
+      un encabezado no extraido no prueba que falte la fecha. El hallazgo
+      pide verificar, y lo dice con esas palabras.
+
+   Lo que NO esta aqui a proposito: auditar el CONTENIDO del CDE (sus ocho
+   elementos obligatorios, la observacion directa, la firma). Ese documento
+   no es el que se sube. Cuando Rolando audite paquetes completos, ese es el
+   siguiente bloque, no este.
+============================================================ */
+
+// Indicios de que la frase atribuye algo a una PERSONA o INSTITUCION, no a un
+// instrumento. Sin esto, "diagnostico confirmado por la Dra. Perez con el
+// ADOS-2" -- que es correcto -- dispararia igual que "diagnosticado por ADOS-2".
+const CDE_RE_CLINICIAN=/\b(?:dr\.?|doctor|ph\.?\s?d|psy\.?\s?d|m\.?\s?d\b|physician|pediatrician|psychiatrist|psychologist|neurologist|practitioner|clinician|evaluator|arnp|aprn|nurse\s+practitioner|licensed|board[-\s]certified|hospital|clinic|medical\s+(?:group|center)|pediatrics|psychiatry|neurology|m[eé]dic[oa]|psic[oó]log[oa]|psiquiatra)\b/i;
+// Instrumentos: los diagnosticos que Molina nombra, mas Vineland/BASC, que son
+// los del behavior assessment y los que se confunden con el CDE.
+const CDE_RE_TOOL=/\b(?:ADOS(?:-2)?|ADI-R|CARS(?:-2)?|DISCO|M-?CHAT(?:-R)?|GARS(?:-[23])?|SRS(?:-2)?|SCQ|ASRS|BASC(?:-3)?|Vineland(?:-3|-II|-3\s+PRQ)?)\b/i;
+// Verbos con los que un texto atribuye el diagnostico a su fuente.
+const CDE_RE_ATTR=/\b(?:confirm(?:s|ed|ing)?|establish(?:es|ed)?|support(?:s|ed)?|indicat(?:es|ed|ive)|yield(?:s|ed)?|reveal(?:s|ed)?|show(?:s|ed|n)?|substantiat(?:es|ed)?|warrant(?:s|ed)?)\b/i;
+
+// Presencia de CUALQUIER rastro de procedencia diagnostica en el documento.
+const CDE_RE_REFERENCED=/\b(?:comprehensive\s+diagnostic\s+evaluation|diagnostic\s+evaluation|\bCDE\b|psychological(?:\s+\w+)?\s+evaluation|neuropsychological\s+evaluation|developmental\s+evaluation|diagnostic\s+(?:report|assessment\s+report)|diagnos(?:ed|is\s+(?:made|provided|rendered|established))\s+(?:by|at)|diagnosing\s+(?:provider|physician|clinician|practitioner|psychologist)|(?:date\s+of\s+(?:asd\s+)?diagnosis|diagnosis\s+date|date\s+diagnosed|diagnosed\s+on)|evaluaci[oó]n\s+diagn[oó]stica)\b/i;
+
+const CDE_RE_ASD=/\b(?:autism\s+spectrum\s+disorder|\bASD\b|autis(?:m|tic)|trastorno\s+del\s+espectro\s+autista|\bTEA\b)\b/i;
+// Nivel de severidad del DSM-5, en cualquiera de las formas en que se escribe.
+const CDE_RE_SEVERITY=[
+  /\b(?:severity\s+level|level\s+of\s+severity|DSM(?:-|\s)?5\s+level|nivel\s+de\s+severidad|nivel\s+de\s+gravedad)\b/i,
+  /\brequiring\s+(?:very\s+)?substantial\s+support\b/i,
+  /\brequiring\s+support\b/i,
+  /\bnivel\s*[123]\b/i
+];
+// "Level 2" suelto puede ser cualquier cosa (un nivel de prompting, un grado
+// escolar). Solo cuenta si cerca se habla de autismo, severidad o apoyos.
+const CDE_RE_LEVEL_N=/\blevel\s*(?:[123]|one|two|three)\b/ig;
+const CDE_RE_LEVEL_CTX=/\b(?:autis|asd|severity|support|dsm)/i;
+
+// Entornos, para la impairment across settings. Se cuentan FAMILIAS, no
+// palabras: "school" y "classroom" son el mismo entorno.
+const CDE_SETTINGS=[
+  /\b(?:at\s+)?home\b|\bhouseholds?\b|\bhogar\b|\bcasa\b/i,
+  /\bschool\b|\bclassroom\b|\bdaycare\b|\bpreschool\b|\bescuela\b|\bcolegio\b/i,
+  /\bcommunity\b|\bin\s+public\b|\bgrocery\s+store\b|\brestaurant\b|\bplayground\b|\bpark\b|\bcomunidad\b/i
+];
+const CDE_RE_IMPAIRMENT=/\b(?:functional\s+impairment|impairment|interfere(?:s|d|nce)?|adversely\s+affect|impacts?\s+(?:daily|his|her|their)|deterioro\s+funcional)\b/i;
+
+/* Trocea en clausulas. La atribucion de un diagnostico vive dentro de una
+   frase; cruzar el punto es lo que produce falsos positivos. */
+function _cdeClauses(text){
+  return text.split(/(?:[.;!?](?=\s|$))|[\n\r]+|\t|\|/).map(s=>s.trim()).filter(s=>s.length>8);
+}
+/* Primera clausula que cumple `pred`, recortada para matchedText. */
+function _cdeFind(clauses,pred){
+  for(const c of clauses){ if(pred(c)) return c.length>240?c.slice(0,240)+'…':c; }
+  return null;
+}
+
+function scanCdeSeparate(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity')return findings;
+  const P=(typeof PAYER!=='undefined'&&PAYER&&PAYER.nombre)?PAYER.nombre:'el pagador';
+  const add=(ruleId,severity,description,suggestedAction,matchedText)=>findings.push({
+    id:uid(),ruleId,severity,category:'cde_requirement',description,suggestedAction,
+    matchedText:matchedText||'',status:'open',createdAt:Date.now()
+  });
+  const clauses=_cdeClauses(text);
+
+  /* ---- 1. CONCLUYENTE: el CDE presentado como el behavior assessment ----
+     Las dos formas reales en que aparece. La primera es la declaracion
+     abierta ("el CDE cubre el requisito"). La segunda, mucho mas frecuente,
+     es citar las puntuaciones Vineland/BASC TOMADAS del CDE en lugar de
+     reportar una administracion propia: eso es exactamente el caso que
+     Molina describe. En ambos el defecto esta escrito aqui. */
+  const susCubre=/\b(?:cde|comprehensive\s+diagnostic\s+evaluation|diagnostic\s+evaluation|psychological\s+evaluation)\b[^.;\n]{0,90}\b(?:serves?\s+as|satisf(?:ies|y)|fulfill?s?|meets?\s+the\s+(?:requirement|need)|in\s+lieu\s+of|instead\s+of|substitut(?:es?|ing)\s+for|doubles?\s+as|is\s+(?:being\s+)?submitted\s+as)\b[^.;\n]{0,70}\b(?:behavior(?:al)?\s+assessment|assessment\s+requirement|required\s+assessment)\b/i;
+  const susDesde=/\b(?:vineland|basc)\b[^.;\n]{0,110}\b(?:from|per|within|included\s+in|contained\s+in|reported\s+in|taken\s+from|obtained\s+(?:from|in)|as\s+part\s+of|documented\s+in)\s+(?:the|a|his|her|their)\s+(?:\w+\s+){0,3}?(?:cde|comprehensive\s+diagnostic\s+evaluation|diagnostic\s+evaluation|psychological\s+evaluation|diagnostic\s+report)\b/i;
+  const susHacia=/\b(?:cde|comprehensive\s+diagnostic\s+evaluation|diagnostic\s+evaluation|psychological\s+evaluation)\b[^.;\n]{0,90}\b(?:includes?|included|contains?|contained|provides?|provided|reports?|reported)\b[^.;\n]{0,50}\b(?:vineland|basc)\b/i;
+  const mSus=_cdeFind(clauses,c=>susCubre.test(c)||susDesde.test(c)||susHacia.test(c));
+  if(mSus){
+    add('MOL_CDE_SUBSTITUTION','blocker',
+      `El documento presenta la evaluación diagnóstica (CDE) como si cubriera el requisito del behavior assessment, o toma de ella las puntuaciones Vineland-3 / BASC-3. ${P} trata los dos como requisitos separados: el CDE establece el diagnóstico; el behavior assessment exige los informes de puntuación completos de Vineland-3 y BASC-3 PRQ administrados y puntuados por el proveedor de BA. Uno no sustituye al otro y ambos se exigen en la solicitud.`,
+      'Administer and score the Vineland-3 and the BASC-3 PRQ as part of this behavior assessment, and submit the complete scoring reports. Cite the CDE only as the source of the diagnosis; do not cite it as the source of the assessment scores.',
+      mSus);
+  }
+
+  /* ---- 2. CONCLUYENTE: Vineland / BASC como base del FBA o del BIP ----
+     Exige un conector de atribucion entre el instrumento y el FBA. Sin el,
+     "se administraron el BASC-3 y el FBA" -- que es correcto -- dispararia.
+     Molina: estos instrumentos "are never used to construct the FBA or BIP". */
+  const fbaDesde=/\b(?:vineland|basc)\b[^.;\n]{0,110}\b(?:serve[sd]?\s+as|used\s+to|informed|inform(?:s|ed)|determin(?:e[sd]?|ing)|identif(?:y|ies|ied)|the\s+basis\s+(?:of|for)|basis)\b[^.;\n]{0,70}\b(?:functional\s+(?:behavior(?:al)?\s+)?(?:assessment|analysis)|\bFBA\b|behavior(?:al)?\s+intervention\s+plan|\bBIP\b|function\s+of\s+(?:the\s+)?behavio)/i;
+  const fbaHacia=/\b(?:functional\s+(?:behavior(?:al)?\s+)?(?:assessment|analysis)|\bFBA\b|behavior(?:al)?\s+intervention\s+plan|\bBIP\b|function\s+of\s+(?:the\s+)?behavio\w*)\b[^.;\n]{0,110}\b(?:based\s+(?:on|upon)|derived\s+from|per|according\s+to|using|utiliz(?:ing|ed)|informed\s+by|determined\s+(?:by|from)|identified\s+(?:by|from)|drawn\s+from)\b[^.;\n]{0,60}\b(?:vineland|basc)\b/i;
+  const mFba=_cdeFind(clauses,c=>fbaDesde.test(c)||fbaHacia.test(c));
+  if(mFba){
+    add('MOL_VINELAND_NOT_FBA','blocker',
+      `El documento apoya el FBA, el BIP o la función de la conducta en el Vineland-3 o el BASC-3. Son escalas normalizadas de funcionamiento adaptativo y conductual: describen el nivel del cliente, no la función de su conducta. ${P} exige que el FBA y el BIP se construyan con evaluación funcional propia, nunca con estos instrumentos.`,
+      'Derive the function of each target behavior from your own functional assessment (descriptive ABC data, interviews, and a functional analysis where indicated). Use the Vineland-3 and BASC-3 as outcome and severity measures only, never as evidence of function.',
+      mFba);
+  }
+
+  /* ---- 3. NO CONCLUYENTE: sin rastro de la procedencia del diagnostico ----
+     Solo en evaluacion inicial: para Medicaid el CDE se exige una vez al
+     inicio y NO caduca, asi que en una reevaluacion su ausencia del texto no
+     dice nada. Warning, nunca blocker: el CDE es otro archivo. */
+  if(docType==='assessment'&&!CDE_RE_REFERENCED.test(text)){
+    add('MOL_CDE_NOT_REFERENCED','warning',
+      `El documento no menciona la evaluación diagnóstica integral (CDE) ni de quién ni cuándo proviene el diagnóstico. ${P} exige el CDE en toda autorización inicial, hecho por un profesional de su lista cerrada, y la solicitud debe identificar al proveedor que emitió el diagnóstico y su fecha. Atención: el CDE es un documento aparte y el auditor solo ve este texto, de modo que esto NO prueba que falte en el paquete; verifíquelo.`,
+      'State in this assessment who made the ASD diagnosis, their credential, and the date of the diagnostic evaluation, and confirm the CDE is included in the authorization packet.',
+      '');
+  }
+
+  /* ---- 4. NO CONCLUYENTE: el diagnostico atribuido a un instrumento ----
+     Molina: "Scoring tools alone (CARS, ADOS, BASC-3) do not constitute a
+     formal diagnosis. A clinician must state the diagnosis explicitly."
+     Warning y no blocker porque el CDE puede enunciarlo bien; el defecto es
+     como lo redacta ESTE documento. La guarda de clinico es la que evita el
+     falso positivo del caso correcto. */
+  const dxDesdeTool=c=>{
+    if(!CDE_RE_TOOL.test(c)||!/diagnos/i.test(c))return false;
+    if(CDE_RE_CLINICIAN.test(c))return false;            // hay un autor humano: correcto
+    const toolPrimero=/\b(?:ADOS|ADI-R|CARS|DISCO|M-?CHAT|GARS|SRS|SCQ|ASRS|BASC|Vineland)\b[^.;\n]{0,80}/i.exec(c);
+    if(toolPrimero&&CDE_RE_ATTR.test(toolPrimero[0])&&/diagnos/i.test(c.slice(toolPrimero.index)))return true;
+    return /\bdiagnos\w*\b[^.;\n]{0,80}\b(?:based\s+(?:on|upon)|per|according\s+to|from|by|via|using)\b[^.;\n]{0,40}\b(?:ADOS|ADI-R|CARS|DISCO|M-?CHAT|GARS|SRS|SCQ|ASRS|BASC|Vineland)\b/i.test(c);
+  };
+  const mTool=_cdeFind(clauses,dxDesdeTool);
+  if(mTool){
+    add('MOL_CDE_DX_FROM_TOOL','warning',
+      `El documento apoya el diagnóstico en la puntuación de un instrumento sin nombrar al clínico que lo emitió. Para ${P} una puntuación no constituye un diagnóstico formal: el profesional evaluador debe enunciarlo de forma explícita. Reescríbalo atribuyéndolo a la persona, con el instrumento como apoyo y no como fuente.`,
+      'Attribute the diagnosis to the evaluating practitioner by name and credential, with the date, and present the instrument as supporting evidence: "ASD diagnosed by [name, credential] on [date]; the ADOS-2 supported the diagnosis."',
+      mTool);
+  }
+
+  /* ---- 5. NO CONCLUYENTE: psicologo escolar sin licencia documentada ----
+     Molina excluye de forma literal al "unlicensed school psychologist". Que
+     el texto omita "licensed" no prueba que no la tenga: por eso el hallazgo
+     pide documentarla. Exige contexto diagnostico para no disparar cuando el
+     psicologo escolar aparece como miembro del equipo. */
+  const escolar=c=>/school\s+psychologist/i.test(c)
+    && !/\blicen[cs]ed\s+school\s+psychologist/i.test(c)
+    && /\bdiagnos/i.test(c);
+  const mEsc=_cdeFind(clauses,escolar);
+  if(mEsc){
+    add('MOL_CDE_PRACTITIONER_UNCLEAR','warning',
+      `El diagnóstico se atribuye a un psicólogo escolar sin constar que esté licenciado. ${P} acepta al psicólogo escolar LICENCIADO dentro de su lista de profesionales habilitados y excluye de forma expresa al no licenciado, cuyo CDE no satisface el requisito de autorización. Documente la licencia o consiga el CDE de un profesional de la lista.`,
+      'Document the school psychologist\'s license (state license number and credential) in the diagnosis attribution, or obtain the diagnostic evaluation from another practitioner on the payer\'s qualified list.',
+      mEsc);
+  }
+
+  /* ---- 6. NO CONCLUYENTE: carta escolar en lugar de la evaluacion ----
+     Molina lo nombra dos veces entre las causas de devolucion: "School
+     accommodation letters alone are not sufficient" y "School accommodation
+     letters submitted in place of treatment recommendations". Patron estrecho
+     a proposito: un assessment cita el IEP de forma legitima todo el tiempo,
+     y solo importa cuando se lo presenta COMO la documentacion diagnostica. */
+  if(docType!=='iep'){
+    const cartaEscolar=/\b(?:504\s+plan|\bIEP\b|accommodation\s+letter|school\s+(?:accommodation|eligibility)\s+(?:letter|determination|report)|educational\s+eligibility)\b[^.;\n]{0,90}\b(?:serves?\s+as|as\s+the|confirms?|confirmed|establish(?:es|ed)?|documents?|documented|provides?\s+the|is\s+(?:the\s+)?(?:basis|evidence)|in\s+lieu\s+of|instead\s+of)\b[^.;\n]{0,70}\b(?:diagnos\w*|treatment\s+recommendations?|medical\s+necessity|eligibility\s+for\s+(?:ABA|BA|behavior)\b)/i;
+    const mCarta=_cdeFind(clauses,c=>cartaEscolar.test(c));
+    if(mCarta){
+      add('MOL_CDE_SCHOOL_LETTER','warning',
+        `El documento parece apoyar el diagnóstico, la necesidad médica o las recomendaciones de tratamiento en documentación escolar (IEP, plan 504 o carta de acomodaciones). Para ${P} la elegibilidad educativa no es un diagnóstico clínico y las cartas escolares por sí solas no bastan: hacen falta pruebas diagnósticas con puntuación e interpretación, y recomendaciones de tratamiento individualizadas del profesional evaluador.`,
+        'Cite the clinical diagnostic evaluation, not school documentation, as the source of the diagnosis and of the treatment recommendations. School records may be included as collateral information about functioning across settings.',
+        mCarta);
+    }
+  }
+
+  /* ---- 7. NO CONCLUYENTE: sin nivel de severidad del DSM-5 ----
+     Sale de la lista de causas de devolucion ("No severity level specified:
+     ... its absence leaves the intensity request without diagnostic
+     grounding"), no de la de elementos obligatorios. Warning, jamas blocker.
+     Solo si el documento afirma un diagnostico de TEA: sin eso no hay nivel
+     que pedir. Sin conflicto con R14: enunciar el NIVEL no es usar los
+     criterios del DSM como lista de objetivos, que es lo que R14 advierte. */
+  if((docType==='assessment'||docType==='reassessment')&&CDE_RE_ASD.test(text)){
+    let tieneNivel=CDE_RE_SEVERITY.some(re=>re.test(text));
+    if(!tieneNivel){
+      CDE_RE_LEVEL_N.lastIndex=0;
+      let m;
+      while((m=CDE_RE_LEVEL_N.exec(text))!==null){
+        const ventana=text.slice(Math.max(0,m.index-80),m.index+m[0].length+80);
+        if(CDE_RE_LEVEL_CTX.test(ventana)){tieneNivel=true;break;}
+      }
+    }
+    if(!tieneNivel){
+      add('MOL_DSM5_SEVERITY_MISSING','warning',
+        `No se detecta el nivel de severidad del DSM-5 (nivel 1, 2 o 3) con los apoyos que requiere. ${P} lo cuenta entre las causas frecuentes de devolución: sin el nivel, la intensidad de horas que se solicita queda sin fundamento diagnóstico. Si el nivel consta en el CDE, enúncielo también aquí, donde se pide la intensidad.`,
+        'State the DSM-5 severity level for ASD (Level 1, 2, or 3) and describe the support needs at that level, then tie the requested service intensity to it.',
+        '');
+    }
+  }
+
+  /* ---- 8. NO CONCLUYENTE: deterioro funcional en un solo entorno ----
+     "A diagnosis without documented functional impairment does not by itself
+     establish the need for intensive services." Umbral deliberadamente bajo:
+     basta que el documento nombre DOS de los tres entornos en cualquier
+     lugar. Un assessment normal los nombra, asi que esto salta solo en el
+     caso real de un documento que nunca sale de un entorno. notice. */
+  if((docType==='assessment'||docType==='reassessment')&&CDE_RE_IMPAIRMENT.test(text)){
+    const presentes=CDE_SETTINGS.filter(re=>re.test(text)).length;
+    if(presentes<2){
+      add('MOL_IMPAIRMENT_ONE_SETTING','notice',
+        `El documento describe deterioro o interferencia funcional pero solo nombra ${presentes===0?'ningún entorno':'un entorno'}. ${P} espera que el deterioro conste en más de un entorno (hogar Y escuela o comunidad): un diagnóstico sin deterioro funcional documentado no establece por sí solo la necesidad de servicios intensivos.`,
+        'Document how the target behaviors affect daily life in at least two environments (home and school or community), with examples from each.',
+        '');
+    }
   }
 
   return findings;
@@ -6481,6 +6722,8 @@ const REPORT_CAT_LABELS={
     'supervision bacb':'Supervision (BACB)',
     supervision:'Supervision',
     payer_timelines:'Payer timelines',
+    cde_requirement:'CDE (diagnostic evaluation)',
+    'cde requirement':'CDE (diagnostic evaluation)',
     'payer timelines':'Payer timelines',
     florida_medicaid:'Florida Medicaid',
     'florida medicaid':'Florida Medicaid',

@@ -48,6 +48,27 @@ Reglas: `MOL_PLAN_DATE_MISSING` · `MOL_PLAN_AGE_60D` · `MOL_REAUTH_WINDOW` · 
 
 ---
 
+### 1.3 El CDE como documento separado (`scanCdeSeparate`)
+
+Para Molina el **CDE** (Comprehensive Diagnostic Evaluation) y el **behavior assessment** son **dos requisitos separados**. Un CDE, incluso uno que traiga puntuaciones Vineland-3 o BASC-3 dentro de la evaluación diagnóstica, *no* satisface el requisito de AHCA del behavior assessment: hacen falta los informes de puntuación completos administrados y puntuados por el proveedor de BA. *"Both documents are required; one does not replace the other."*
+
+**El principio que gobierna el bloque: el auditor no ve el paquete.** Ve **un** texto extraído —el assessment o la reevaluación—. El CDE es otro archivo, que puede existir perfectamente sin aparecer en este texto. Por eso el bloque **nunca afirma "falta el CDE"**: solo puede afirmar cosas del documento que tiene delante. De ahí dos clases de regla:
+
+- **Concluyentes (`blocker`).** El defecto está **en este texto**. El documento declara que la evaluación diagnóstica cubre el requisito del behavior assessment (`MOL_CDE_SUBSTITUTION`), o apoya el FBA, el BIP o la función de la conducta en el Vineland-3 o el BASC-3 (`MOL_VINELAND_NOT_FBA`), que Molina prohíbe de forma expresa. Aquí no hay nada que el paquete pueda salvar: lo escrito ya es el error.
+- **No concluyentes (`warning` / `notice`).** El documento **no menciona** algo. Eso no prueba que falte en el paquete, igual que en `MOL_PLAN_DATE_MISSING` un encabezado no extraído no prueba que falte la fecha. El hallazgo pide **verificar**, y lo dice con esas palabras.
+
+**Lo que NO está aquí a propósito:** auditar el *contenido* del CDE —sus ocho elementos obligatorios, la observación directa, la firma—. Ese documento no es el que se sube. Cuando se auditen paquetes completos, ese es el bloque siguiente.
+
+**La guarda que evita el falso positivo caro (`MOL_CDE_DX_FROM_TOOL`).** Molina rechaza que una puntuación haga de diagnóstico: *"A clinician must state the diagnosis explicitly."* Pero *"diagnóstico confirmado por la Dra. Pérez con el ADOS-2"* es **correcto**. La regla exige un verbo de atribución entre instrumento y diagnóstico **y** que en la cláusula no haya ningún indicio de persona o institución (`Dr.`, `PhD`, `psychologist`, `hospital`…). Con clínico presente, calla.
+
+**Tensión con R14, comprobada y descartada.** R14 (`GOALS_NOT_DSM_CRITERIA`) advierte contra convertir los criterios del DSM en objetivos de tratamiento; Molina **exige** el nivel de severidad del DSM-5. No se pisan: enunciar el *nivel* no es usar los *criterios* como lista de metas. Verificado en `cde_browser.js`, no supuesto — un documento que dice "DSM-5 Level 2 (requiring substantial support)" no dispara R14 ni pide el nivel de nuevo.
+
+**Umbrales deliberadamente bajos.** `MOL_IMPAIRMENT_ONE_SETTING` solo salta si el documento nombra menos de **dos** de los tres entornos (hogar, escuela, comunidad) en *todo* el texto. Un assessment normal los nombra, así que salta solo en el caso real de un documento que nunca sale de un entorno. `MOL_DSM5_SEVERITY_MISSING` y `MOL_IMPAIRMENT_ONE_SETTING` salen de la lista de *causas de devolución*, no de la de elementos obligatorios: de ahí `warning` y `notice`, nunca `blocker`.
+
+Reglas: `MOL_CDE_SUBSTITUTION` · `MOL_VINELAND_NOT_FBA` · `MOL_CDE_NOT_REFERENCED` · `MOL_CDE_DX_FROM_TOOL` · `MOL_CDE_PRACTITIONER_UNCLEAR` · `MOL_CDE_SCHOOL_LETTER` · `MOL_DSM5_SEVERITY_MISSING` · `MOL_IMPAIRMENT_ONE_SETTING`. Categoría `cde_requirement`.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.

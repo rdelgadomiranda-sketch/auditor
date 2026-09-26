@@ -283,10 +283,10 @@ Ninguna implementada. Todas con `verificacion:'primaria'` — texto primario le�
 
 1. **✅ IMPLEMENTADO — Sustituir el pagador codificado a mano.** "Sunshine Health" estaba escrito en seis lugares, incluidos dos prompts de IA. Ver `PAYER`.
 2. **✅ IMPLEMENTADO — Bloque de fechas** (5.3.2) como `scanPayerDates`, seis reglas, categoría `payer_timelines`. **Solo compara fechas internas del documento**, nunca contra la fecha de la auditoría: los analistas envían el paquete antes de auditarlo, así que el reloj de hoy sobreestima la edad al enviar. Ver `CONTEXTO_AUDITOR_Claude_Code.md` §1.2
-3. **CDE como documento separado** (5.3.1) — la causa #1 de denegación
+3. **✅ IMPLEMENTADO — CDE como documento separado** (5.3.1) como `scanCdeSeparate`, ocho reglas, categoría `cde_requirement`. Distingue lo **concluyente** (el documento declara que el CDE cubre el requisito del behavior assessment, o apoya el FBA en el Vineland/BASC → `blocker`) de lo **no concluyente** (el documento no menciona la procedencia del diagnóstico → `warning` que pide verificar, porque el auditor ve un solo archivo y no el paquete). No audita el contenido del CDE: ese documento no es el que se sube. Ver `CONTEXTO_AUDITOR_Claude_Code.md` §1.3
 4. **Criterios de alta objetivos** (5.3.3) — reutiliza la maquinaria de TBD ya construida
 5. **Recalibrar R9 a 25 h directas** (5.2) y decidir si vuelve a `blocker`
-6. **Acotar R14** (5.4) antes de auditar paquetes que incluyan el CDE
+6. **Acotar R14** (5.4) antes de auditar paquetes que incluyan el CDE — **la tensión se comprobó al implementar el punto 3 y no se materializa** sobre el assessment: R14 no salta por enunciar el nivel de severidad del DSM-5 (verificado en `cde_browser.js`). Sigue pendiente solo para el día en que se audite el texto del CDE mismo, que sí mapea criterios.
 
 ---
 

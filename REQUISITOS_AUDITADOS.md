@@ -211,6 +211,34 @@ Las reevaluaciones deben ocurrir al menos cada 6 meses.
 
 El behavior plan debe cubrir todo el periodo de autorizacion solicitado, hasta seis meses.
 
+### `MOL_CDE_REQUIRED`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, secc. 1, Who Can Perform a CDE / Required Elements  
+**Severidad:** warning  
+**Reglas que lo aplican:** `MOL_CDE_NOT_REFERENCED`, `MOL_CDE_DX_FROM_TOOL`, `MOL_CDE_PRACTITIONER_UNCLEAR`, `MOL_CDE_SCHOOL_LETTER`
+
+Toda autorizacion inicial exige una evaluacion diagnostica integral (CDE) hecha por un profesional de una lista cerrada (PCP de familia, medicina interna o pediatria; medico de pediatria del desarrollo y del comportamiento, neurodesarrollo, neurologia pediatrica o psiquiatria; psicologo infantil PhD o PsyD; psicologo escolar LICENCIADO -el no licenciado no puede hacerla-; o equipo multidisciplinario dirigido por uno de ellos). El diagnostico debe enunciarlo el profesional evaluador de forma explicita: la puntuacion de un instrumento de cribado como el CARS o el ADOS no constituye un diagnostico formal, y las cartas escolares de acomodaciones por si solas no bastan.
+
+> ⚠️ El auditor ve un solo documento, no el paquete: por eso estas reglas piden verificar y no bloquean. Solo se comprueba lo que el behavior assessment dice sobre la procedencia del diagnostico, nunca el contenido del CDE, que es otro archivo.
+
+### `MOL_CDE_VS_BEHAVIOR_ASSESSMENT`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, secc. 1, CDE vs. Behavior Assessment  
+**Severidad:** blocker  
+**Reglas que lo aplican:** `MOL_CDE_SUBSTITUTION`, `MOL_VINELAND_NOT_FBA`
+
+El CDE y el behavior assessment son dos requisitos SEPARADOS. Un CDE, incluso uno que contenga puntuaciones Vineland-3 o BASC-3 dentro de la evaluacion diagnostica, no satisface el requisito de AHCA de un behavior assessment enviado con la solicitud: hacen falta los informes de puntuacion completos de Vineland-3 y BASC-3 PRQ administrados y puntuados por el proveedor de BA. Ambos documentos se exigen; uno no reemplaza al otro. Estos instrumentos nunca se usan para construir el FBA ni el BIP.
+
+### `MOL_CDE_SEVERITY_CONTEXT`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, secc. 1 y 2, What Distinguishes a Thorough CDE / CDE-Related Snags  
+**Severidad:** warning  
+**Reglas que lo aplican:** `MOL_DSM5_SEVERITY_MISSING`, `MOL_IMPAIRMENT_ONE_SETTING`
+
+Entre las causas frecuentes de devolucion estan no especificar el nivel de severidad del DSM-5 para el TEA (nivel 1, 2 o 3) con los apoyos que requiere, porque su ausencia deja sin fundamento diagnostico la intensidad solicitada, y describir el deterioro funcional en un solo entorno o en ninguno: un diagnostico sin deterioro funcional documentado no establece por si solo la necesidad de servicios intensivos.
+
+> ⚠️ Salen de la lista de causas de devolucion, no de la de elementos obligatorios: por eso warning y notice, nunca blocker.
+
 
 ## ⚠️ Solo búsqueda — sin verificar
 
@@ -260,4 +288,4 @@ Planned ignoring nunca para agresion, SIB, elopement o destruccion; response blo
 
 ---
 
-**Totales:** 28 requisitos · 24 verificados contra texto primario · 1 solo por búsqueda · 3 convención clínica.
+**Totales:** 31 requisitos · 27 verificados contra texto primario · 1 solo por búsqueda · 3 convención clínica.
