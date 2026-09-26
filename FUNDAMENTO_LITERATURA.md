@@ -282,7 +282,7 @@ Ninguna implementada. Todas con `verificacion:'primaria'` — texto primario le�
 ### 5.7 Orden recomendado
 
 1. **✅ IMPLEMENTADO — Sustituir el pagador codificado a mano.** "Sunshine Health" estaba escrito en seis lugares, incluidos dos prompts de IA. Ver `PAYER`.
-2. **Bloque de fechas** (5.3.2) — determinista, sin IA, y es causa directa de devolución
+2. **✅ IMPLEMENTADO — Bloque de fechas** (5.3.2) como `scanPayerDates`, seis reglas, categoría `payer_timelines`. **Solo compara fechas internas del documento**, nunca contra la fecha de la auditoría: los analistas envían el paquete antes de auditarlo, así que el reloj de hoy sobreestima la edad al enviar. Ver `CONTEXTO_AUDITOR_Claude_Code.md` §1.2
 3. **CDE como documento separado** (5.3.1) — la causa #1 de denegación
 4. **Criterios de alta objetivos** (5.3.3) — reutiliza la maquinaria de TBD ya construida
 5. **Recalibrar R9 a 25 h directas** (5.2) y decidir si vuelve a `blocker`

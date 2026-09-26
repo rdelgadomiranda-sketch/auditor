@@ -1800,6 +1800,7 @@ async function runAudit(){
     findings=findings.concat(scanAdminRequiredElements(text,state.currentDoc.docType));
     findings=findings.concat(scanProceduralFidelity(text,state.currentDoc.docType));
     findings=findings.concat(scanAssessmentDomains(text,state.currentDoc.docType));
+    findings=findings.concat(scanPayerDates(text,state.currentDoc.docType));
     findings=findings.concat(scanGoalsNotDsmCriteria(text,state.currentDoc.docType));
     findings=findings.concat(scanClientAssent(text,state.currentDoc.docType));
     findings=findings.concat(scanGoalAssessmentLink(text,state.currentDoc.docType));
@@ -2734,6 +2735,26 @@ const AUDIT_REQUIREMENTS=[
    reglas:['(herramienta: AUDITOR_RULES_VERSION, summarizeAiScope, reportFindingError)']},
 
   // ── NO VERIFICADO contra texto primario en este proyecto ─────────────────
+  // -- Molina Healthcare, capa de pagador (julio 2026) --------------------
+  // Su guia de Florida se declara basada en la AHCA BA Services Coverage Policy
+  // (diciembre 2024): NO sustituye a Florida, se suma. Ver FUNDAMENTO §5.
+  {id:'MOL_PLAN_DATE_60D', fuente:'Molina Healthcare, ABA documentation requirements', edicion:'julio 2026', seccion:'Initial treatment plan', verificacion:'primaria', severidad:'blocker/warning',
+   requisito:'El plan debe haberse escrito o actualizado dentro de los 60 dias previos al envio para reautorizacion, y la fecha de redaccion debe constar en el documento.',
+   reglas:['MOL_PLAN_DATE_MISSING','MOL_PLAN_AGE_60D'],
+   nota:'Solo se evalua si el documento declara TAMBIEN la fecha de envio. No se mide contra la fecha de la auditoria: en esta consulta el paquete se manda al seguro antes de auditarlo, de modo que la edad medida hoy sobreestima la edad al enviar y produciria blockers falsos.'},
+  {id:'MOL_REAUTH_WINDOW', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'Coverage & Prior Authorization Basics', verificacion:'primaria', severidad:'warning',
+   requisito:'Reautorizacion al menos cada 180 dias. El envio se acepta desde 30 dias antes del vencimiento y no mas tarde de 10 dias antes.',
+   reglas:['MOL_REAUTH_WINDOW']},
+  {id:'MOL_DX_ASSESSMENT_24M', fuente:'Molina Clinical Policy No. 482', edicion:'06/10/2026', seccion:'1.g.ii', verificacion:'primaria', severidad:'warning',
+   requisito:'Si la evaluacion diagnostica estandarizada tiene mas de 24 meses, debe acompanarse de documentacion actualizada que describa los sintomas de ASD y el impacto funcional actuales.',
+   reglas:['MOL_DX_ASSESSMENT_24M'],
+   nota:'El CDE no caduca para miembros de Medicaid; lo que se exige es la actualizacion, no una evaluacion nueva.'},
+  {id:'MOL_REASSESS_INTERVAL', fuente:'Molina Clinical Policy No. 482', edicion:'06/10/2026', seccion:'4.l', verificacion:'primaria', severidad:'warning',
+   requisito:'Las reevaluaciones deben ocurrir al menos cada 6 meses.',
+   reglas:['MOL_REASSESS_INTERVAL']},
+  {id:'MOL_PLAN_COVERS_PERIOD', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'2 y 3', verificacion:'primaria', severidad:'blocker',
+   requisito:'El behavior plan debe cubrir todo el periodo de autorizacion solicitado, hasta seis meses.',
+   reglas:['MOL_PLAN_COVERS_PERIOD']},
   {id:'CPT_UNIT_MATH', fuente:'Convencion del consultorio y fee schedule de Florida', edicion:'-', seccion:'-', verificacion:'convencion', severidad:'blocker',
    requisito:'Unidades = horas por semana x 4 unidades por hora x 26 semanas para un periodo de autorizacion de seis meses.',
    reglas:['CPT_UNITS_MATH'],
@@ -3943,6 +3964,282 @@ async function scanProgressDataPerBehavior(docObj,canonical){
 // ONLY (no rewrite: category 'internal_contradiction' is excluded from
 // enrichment and bulk-approve). Ages are filtered to a plausible pediatric
 // client range (1–21) so caregiver ages don't create false inconsistencies.
+/* ===== Bloque de fechas del pagador (Molina, vigente julio 2026) ===========
+
+   Cinco requisitos de Molina son puramente temporales: no hacen falta pasadas
+   de IA, son fechas y aritmetica. Ver FUNDAMENTO_LITERATURA.md, seccion 5.3.2.
+
+   EL PRINCIPIO QUE SOSTIENE TODO EL BLOQUE:
+   SOLO SE COMPARAN FECHAS QUE ESTEN AMBAS DENTRO DEL DOCUMENTO.
+   Nunca se compara contra la fecha de la auditoria.
+
+   Por que. El primer diseno media la edad del plan contra HOY, razonando que
+   el envio ocurre hoy o despues y que por tanto la edad de hoy es una cota
+   inferior de la edad al enviar. En el flujo real de esta consulta eso es
+   falso, y falso en la direccion peligrosa: los analistas mandan el paquete
+   al seguro PRIMERO y lo pasan por el auditor DESPUES. El envio ya ocurrio,
+   en el pasado. La edad medida hoy es entonces una SOBREestimacion: un plan
+   con 70 dias hoy pudo tener 30 cuando se envio, y estaba en regla. Medir
+   contra hoy produciria blockers falsos contra planes correctos.
+
+   Comparar fechas internas del documento no tiene ese problema, y ademas
+   hace las reglas REPRODUCIBLES: auditar el mismo documento dentro de un ano
+   da exactamente los mismos hallazgos. Una regla anclada en "hoy" haria que
+   una auditoria archivada cambiara de significado con el tiempo, justo lo
+   contrario de la trazabilidad que exigen las Practice Parameters de IA.
+
+   Consecuencia aceptada: cuando el documento no trae la segunda fecha, la
+   regla CALLA. Es preferible el silencio a una afirmacion que no se puede
+   sostener. La regla de los 60 dias, en particular, solo se puede evaluar si
+   el documento declara la fecha de envio o de solicitud.
+
+   AMBIGUEDAD DE FORMATO. 03/04/2026 es el 3 de abril o el 4 de marzo segun el
+   pais. Se asume EE. UU. (MM/DD), pero cuando ambos componentes son <=12 la
+   fecha queda marcada como ambigua y la regla solo emite `blocker` si la
+   conclusion se sostiene bajo TODAS las lecturas posibles. Si solo se sostiene
+   bajo alguna, baja de severidad y lo dice. Nunca se bloquea por adivinar el
+   formato.                                                                  */
+
+const MOL_PLAN_MAX_AGE_DAYS=60;       // plan escrito/actualizado dentro de 60 dias del envio
+const MOL_REAUTH_EARLIEST_DAYS=30;    // se puede enviar hasta 30 dias antes del vencimiento
+const MOL_REAUTH_LATEST_DAYS=10;      // y no mas tarde de 10 dias antes
+const MOL_DX_STALE_MONTHS=24;         // evaluacion diagnostica estandarizada > 24 meses
+const MOL_REASSESS_MAX_DAYS=186;      // reevaluacion al menos cada 6 meses (6 x 31)
+
+const MOL_MONTHS={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+
+// Construye una fecha solo si el dia existe de verdad en ese mes (rechaza
+// 02/31) y si el ano es plausible para un expediente clinico. El rango evita
+// que numeros de codigo o de pagina se lean como fechas. `nowMs` se usa SOLO
+// para ese limite de cordura, nunca para decidir un hallazgo.
+function _molMakeDate(y,m,d,nowMs){
+  if(!(m>=1&&m<=12)||!(d>=1&&d<=31))return null;
+  const yr=new Date(nowMs||Date.now()).getFullYear();
+  if(y<1990||y>yr+5)return null;
+  const dt=new Date(y,m-1,d);
+  if(dt.getFullYear()!==y||dt.getMonth()!==m-1||dt.getDate()!==d)return null;
+  return dt.getTime();
+}
+
+/* Extrae la PRIMERA fecha de un fragmento. Devuelve {ms, alt, texto}, donde
+   `alt` es la lectura DD/MM cuando el formato numerico es ambiguo y null
+   cuando no lo es. Formatos: M/D/AAAA, M-D-AA, AAAA-MM-DD, "January 5, 2026"
+   y "5 January 2026". */
+function _molParseDate(frag,nowMs){
+  if(!frag)return null;
+  let m=/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/.exec(frag);
+  if(m){
+    const ms=_molMakeDate(+m[1],+m[2],+m[3],nowMs);
+    if(ms!==null)return {ms,alt:null,texto:m[0]};
+  }
+  m=/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/i.exec(frag);
+  if(m){
+    const ms=_molMakeDate(+m[3],MOL_MONTHS[m[1].toLowerCase().slice(0,3)],+m[2],nowMs);
+    if(ms!==null)return {ms,alt:null,texto:m[0]};
+  }
+  m=/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s+(\d{4})\b/i.exec(frag);
+  if(m){
+    const ms=_molMakeDate(+m[3],MOL_MONTHS[m[2].toLowerCase().slice(0,3)],+m[1],nowMs);
+    if(ms!==null)return {ms,alt:null,texto:m[0]};
+  }
+  m=/\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})\b/.exec(frag);
+  if(m){
+    let y=+m[3];
+    if(m[3].length===2)y=y<70?2000+y:1900+y;
+    const a=+m[1],b=+m[2];
+    const usa=_molMakeDate(y,a,b,nowMs);          // MM/DD (EE. UU.)
+    const eur=_molMakeDate(y,b,a,nowMs);          // DD/MM
+    if(usa!==null)return {ms:usa, alt:(eur!==null&&eur!==usa)?eur:null, texto:m[0]};
+    if(eur!==null)return {ms:eur, alt:null, texto:m[0]};   // el primero >12: sin ambiguedad
+  }
+  return null;
+}
+
+/* Busca una etiqueta y toma la fecha que viene DESPUES, dentro de la misma
+   linea o celda. El corte en el salto de linea es la leccion de
+   classifyTbdContext: sin el, "Date of plan:" se lleva la fecha de nacimiento
+   del renglon siguiente. */
+function _molLabeledDate(text,labelRe,nowMs){
+  if(!text)return null;
+  const re=new RegExp(labelRe.source,labelRe.flags.replace('g','')+'g');
+  let m;
+  while((m=re.exec(text))!==null){
+    // El \s* final de la etiqueta puede haberse tragado el salto de linea. Si
+    // se rebanara desde ahi, el corte por renglon no encontraria nada y la
+    // etiqueta se llevaria la fecha del campo siguiente ("Date of plan:" ->
+    // fecha de nacimiento). Se devuelve ese espacio al fragmento.
+    const fin=m.index+m[0].replace(/\s+$/,'').length;
+    let seg=text.slice(fin, fin+60);
+    const cut=seg.search(/[\n\r]|(?:\.\s)|\t|\|/);
+    if(cut!==-1)seg=seg.slice(0,cut);
+    const d=_molParseDate(seg,nowMs);
+    if(d)return {...d, etiqueta:m[0].trim(), index:m.index};
+  }
+  return null;
+}
+
+/* Rango de fechas tras una etiqueta: "01/15/2026 - 07/14/2026", "… to …",
+   "… through …". Devuelve {inicio,fin,texto} o null. */
+function _molLabeledRange(text,labelRe,nowMs){
+  if(!text)return null;
+  const re=new RegExp(labelRe.source,labelRe.flags.replace('g','')+'g');
+  let m;
+  while((m=re.exec(text))!==null){
+    const fin=m.index+m[0].replace(/\s+$/,'').length;   // mismo motivo que arriba
+    let seg=text.slice(fin, fin+120);
+    const cut=seg.search(/[\n\r]|\t|\|/);
+    if(cut!==-1)seg=seg.slice(0,cut);
+    const a=_molParseDate(seg,nowMs);
+    if(!a)continue;
+    const after=seg.slice(seg.indexOf(a.texto)+a.texto.length);
+    if(!/^\s*(?:-|–|—|to|through|hasta|al)\s*/i.test(after))continue;
+    const b=_molParseDate(after,nowMs);
+    if(b&&b.ms>a.ms)return {inicio:a.ms, fin:b.ms, texto:a.texto+' – '+b.texto, index:m.index};
+  }
+  return null;
+}
+
+const MOL_DAY=86400000;
+function _molDays(fromMs,toMs){ return Math.floor((toMs-fromMs)/MOL_DAY); }
+
+/* Diferencia en dias entre dos fechas extraidas, considerando TODAS las
+   lecturas posibles cuando alguna es ambigua. Devuelve {base, todas, ambigua}:
+   `base` es la diferencia bajo la lectura de EE. UU.; `todas` es true cuando el
+   umbral se supera bajo cualquier combinacion, que es lo que permite bloquear. */
+function _molGap(desde,hasta,umbralDias){
+  const A=[desde.ms].concat(desde.alt!==null?[desde.alt]:[]);
+  const B=[hasta.ms].concat(hasta.alt!==null?[hasta.alt]:[]);
+  const difs=[];
+  for(const a of A)for(const b of B)difs.push(_molDays(a,b));
+  const base=_molDays(desde.ms,hasta.ms);
+  return {
+    base,
+    supera:base>umbralDias,          // dispara SOLO la lectura de EE. UU.
+    todas:difs.every(d=>d>umbralDias), // y solo bloquea si ninguna lectura salva
+    ambigua:desde.alt!==null||hasta.alt!==null
+  };
+}
+
+const MOL_RE_PLAN_DATE=/\b(?:date\s+(?:of\s+)?(?:this\s+)?(?:plan|report|treatment\s+plan)|plan\s+date|report\s+date|date\s+(?:written|prepared|of\s+preparation)|prepared\s+on|fecha\s+(?:de[l]?\s+)?(?:plan|informe|reporte))\b\s*:?\s*/i;
+const MOL_RE_SUBMIT_DATE=/\b(?:date\s+(?:of\s+)?(?:submission|request)|submission\s+date|date\s+submitted|submitted\s+on|request\s+date|date\s+of\s+authorization\s+request|fecha\s+de\s+(?:env[ií]o|solicitud))\b\s*:?\s*/i;
+const MOL_RE_AUTH_PERIOD=/\b(?:authorization\s+period|auth(?:orization)?\s+dates?|period\s+of\s+authorization|approved\s+(?:for\s+)?period|per[ií]odo\s+de\s+autorizaci[oó]n)\b\s*:?\s*/i;
+const MOL_RE_AUTH_END=/\b(?:authorization\s+end\s+date|auth(?:orization)?\s+(?:expires|expiration|end)|end\s+of\s+authorization|vencimiento\s+de\s+la\s+autorizaci[oó]n)\b\s*:?\s*/i;
+const MOL_RE_PLAN_PERIOD=/\b(?:(?:behavior|treatment|service)\s+plan\s+(?:period|dates?)|plan\s+period|service\s+period|treatment\s+period|per[ií]odo\s+del\s+plan)\b\s*:?\s*/i;
+const MOL_RE_DX_DATE=/\b(?:(?:asd|autism)\s+diagnosis\s+date|date\s+of\s+(?:asd\s+)?diagnosis|diagnosis\s+date|date\s+diagnosed|diagnosed\s+on|comprehensive\s+diagnostic\s+evaluation(?:\s+date)?|fecha\s+de[l]?\s+diagn[oó]stico)\b\s*:?\s*/i;
+const MOL_RE_PREV_ASSESS=/\b(?:(?:previous|prior|last)\s+(?:assessment|reassessment|evaluation|authorization)(?:\s+date)?|date\s+of\s+(?:previous|prior|last)\s+(?:assessment|reassessment|evaluation)|evaluaci[oó]n\s+(?:previa|anterior))\b\s*:?\s*/i;
+
+/* Regla de fechas. `now` existe solo para que el limite de cordura del parser
+   sea determinista en el harness; NINGUN hallazgo depende de el. */
+function scanPayerDates(text,docType,now){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='iep'||docType==='medical_necessity')return findings;
+  const nowMs=now||Date.now();
+  const P=(typeof PAYER!=='undefined'&&PAYER&&PAYER.nombre)?PAYER.nombre:'el pagador';
+  const add=(ruleId,severity,description,suggestedAction,matchedText)=>findings.push({
+    id:uid(),ruleId,severity,category:'payer_timelines',description,suggestedAction,
+    matchedText:matchedText||'',status:'open',createdAt:Date.now()
+  });
+  const amb=g=>g.ambigua?' La fecha es ambigua (MM/DD o DD/MM); se asume el formato de EE. UU.':'';
+  const parcial=g=>(g.ambigua&&!g.todas)?' Bajo la otra lectura de la fecha no se superaría el límite, por eso baja de severidad.':'';
+
+  const plan=_molLabeledDate(text,MOL_RE_PLAN_DATE,nowMs);
+  const envio=_molLabeledDate(text,MOL_RE_SUBMIT_DATE,nowMs);
+  const dx=_molLabeledDate(text,MOL_RE_DX_DATE,nowMs);
+  const rangoAuth=_molLabeledRange(text,MOL_RE_AUTH_PERIOD,nowMs);
+  const finAuthSolo=_molLabeledDate(text,MOL_RE_AUTH_END,nowMs);
+  const finAuth=rangoAuth?{ms:rangoAuth.fin,alt:null,texto:rangoAuth.texto}
+                         :(finAuthSolo?{ms:finAuthSolo.ms,alt:finAuthSolo.alt,texto:finAuthSolo.texto}:null);
+  const rangoPlan=_molLabeledRange(text,MOL_RE_PLAN_PERIOD,nowMs);
+
+  // ---- 1. La fecha del plan debe constar --------------------------------
+  // Esto si es independiente de cualquier reloj: o esta escrita o no esta.
+  // Queda en warning y no en blocker porque la fecha suele ir en encabezado o
+  // pie, y la extraccion de texto del .docx no siempre los recupera: el
+  // auditor no puede distinguir "no esta" de "no lo vi".
+  if(!plan){
+    add('MOL_PLAN_DATE_MISSING','warning',
+      `No se detecta la fecha de redacción del plan. ${P} exige documentar la fecha en que se escribió el plan actual, y las de sus actualizaciones previas. Sin ella no se puede demostrar la regla de los ${MOL_PLAN_MAX_AGE_DAYS} días. Si la fecha está en un encabezado o pie, puede no haberse extraído: verifíquelo en el documento.`,
+      'State the date the current treatment plan was written, and the dates of any previous updates, in the body of the plan.');
+  }
+
+  // ---- 2. 60 dias entre redaccion y envio -------------------------------
+  // Solo se evalua si AMBAS fechas constan en el documento. No se sustituye la
+  // fecha de envio por la de hoy: en esta consulta el paquete se manda antes
+  // de auditarlo, asi que hoy no dice nada sobre cuando se envio.
+  if(plan&&envio){
+    const g=_molGap(plan,envio,MOL_PLAN_MAX_AGE_DAYS);
+    if(g.supera){
+      add('MOL_PLAN_AGE_60D', g.todas?'blocker':'warning',
+        `Entre la fecha del plan (${plan.texto}) y la del envío (${envio.texto}) hay ${g.base} días. ${P} exige que el plan se haya escrito o actualizado dentro de los ${MOL_PLAN_MAX_AGE_DAYS} días previos al envío para reautorización.${amb(g)}${parcial(g)}`,
+        'Update the treatment plan and restate its date so that it falls within 60 days of the reauthorization submission.',
+        plan.texto);
+    }
+  }
+
+  // ---- 3. Ventana de envio: entre 30 y 10 dias antes del vencimiento ----
+  // Igual que arriba: exige que el documento declare la fecha de envio. Sin
+  // ella no hay forma de saber si se respeto la ventana.
+  if(envio&&finAuth){
+    const g=_molGap(envio,finAuth,-99999);           // solo para el desglose de lecturas
+    const restan=_molDays(envio.ms,finAuth.ms);
+    if(restan<MOL_REAUTH_LATEST_DAYS){
+      add('MOL_REAUTH_WINDOW','warning',
+        restan<0
+          ? `El envío (${envio.texto}) es posterior al vencimiento de la autorización (${finAuth.texto}). ${P} no reembolsa servicios prestados sin autorización vigente.${amb(g)}`
+          : `Entre el envío (${envio.texto}) y el vencimiento (${finAuth.texto}) hay ${restan} días. ${P} exige enviar la reautorización a más tardar ${MOL_REAUTH_LATEST_DAYS} días antes del vencimiento.${amb(g)}`,
+        'Submit the reauthorization request no later than 10 days before the authorization end date.',
+        envio.texto);
+    }else if(restan>MOL_REAUTH_EARLIEST_DAYS){
+      add('MOL_REAUTH_WINDOW','notice',
+        `Entre el envío (${envio.texto}) y el vencimiento (${finAuth.texto}) hay ${restan} días. ${P} acepta la reautorización desde ${MOL_REAUTH_EARLIEST_DAYS} días antes del vencimiento.${amb(g)}`,
+        'Submit the reauthorization request no earlier than 30 days before the authorization end date.',
+        envio.texto);
+    }
+  }
+
+  // ---- 4. Evaluacion diagnostica de mas de 24 meses ---------------------
+  // Se mide contra la fecha del PLAN, no contra hoy: asi el hallazgo dice algo
+  // sobre el documento y no sobre cuando se abrio el auditor.
+  if(dx&&plan){
+    const umbral=Math.round(MOL_DX_STALE_MONTHS*30.44);
+    const g=_molGap(dx,plan,umbral);
+    if(g.supera){
+      add('MOL_DX_ASSESSMENT_24M', g.todas?'warning':'notice',
+        `Entre la evaluación diagnóstica (${dx.texto}) y la redacción del plan (${plan.texto}) hay unos ${Math.round(g.base/30.44)} meses. Cuando una evaluación diagnóstica estandarizada supera los ${MOL_DX_STALE_MONTHS} meses, ${P} exige documentación actualizada que describa los síntomas de ASD y el impacto funcional actuales. El CDE en sí no caduca; lo que hace falta es la actualización.${amb(g)}${parcial(g)}`,
+        'Add a current description of ASD symptoms and functional impact; the standardized diagnostic assessment on file is more than 24 months old.',
+        dx.texto);
+    }
+  }
+
+  // ---- 5. Intervalo entre reevaluaciones: 6 meses -----------------------
+  if(docType==='reassessment'&&plan){
+    const prev=_molLabeledDate(text,MOL_RE_PREV_ASSESS,nowMs);
+    if(prev){
+      const g=_molGap(prev,plan,MOL_REASSESS_MAX_DAYS);
+      if(g.supera){
+        add('MOL_REASSESS_INTERVAL', g.todas?'warning':'notice',
+          `Entre la evaluación anterior (${prev.texto}) y este plan (${plan.texto}) han pasado ${g.base} días. ${P} exige que las reevaluaciones ocurran al menos cada 6 meses, y la reautorización al menos cada 180 días.${amb(g)}${parcial(g)}`,
+          'Document the reassessment interval; reassessments must occur at least every six months.',
+          prev.texto);
+      }
+    }
+  }
+
+  // ---- 6. El plan debe cubrir todo el periodo solicitado ----------------
+  // Concluyente solo cuando el documento declara AMBOS rangos y el del plan
+  // termina antes. Si falta alguno, no hay nada que comparar y se calla.
+  if(rangoPlan&&rangoAuth&&rangoPlan.fin<rangoAuth.fin){
+    const faltan=_molDays(rangoPlan.fin,rangoAuth.fin);
+    add('MOL_PLAN_COVERS_PERIOD','blocker',
+      `El plan de conducta cubre hasta ${new Date(rangoPlan.fin).toLocaleDateString('es')}, pero el período de autorización llega hasta ${new Date(rangoAuth.fin).toLocaleDateString('es')}: quedan ${faltan} días sin cubrir. ${P} devuelve las solicitudes cuyo plan no cubre todo el período solicitado (hasta seis meses).`,
+      'Extend the behavior plan so that it covers the full authorization period being requested, up to six months.',
+      rangoPlan.texto);
+  }
+
+  return findings;
+}
+
 function scanAgeConsistency(text){
   const findings=[];
   if(!text)return findings;
@@ -6183,6 +6480,8 @@ const REPORT_CAT_LABELS={
     supervision_bacb:'Supervision (BACB)',
     'supervision bacb':'Supervision (BACB)',
     supervision:'Supervision',
+    payer_timelines:'Payer timelines',
+    'payer timelines':'Payer timelines',
     florida_medicaid:'Florida Medicaid',
     'florida medicaid':'Florida Medicaid',
     ioa_requirement:'IOA requirement',

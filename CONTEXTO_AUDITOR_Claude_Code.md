@@ -28,6 +28,26 @@
 
 ---
 
+## 1.2 Bloque de fechas del pagador (`scanPayerDates`) — la regla que lo gobierna
+
+Cinco requisitos de Molina son puramente temporales (FUNDAMENTO §5.3.2). Se implementan sin IA: fechas y aritmética.
+
+**Principio, y no es negociable: solo se comparan fechas que estén AMBAS dentro del documento. Nunca contra la fecha de la auditoría.**
+
+El primer diseño medía la edad del plan contra *hoy*, razonando que el envío ocurre hoy o después y que por tanto la edad de hoy es una cota inferior. **Rolando lo corrigió: en su consulta los analistas mandan el paquete al seguro PRIMERO y lo auditan DESPUÉS.** El envío ya ocurrió. La edad medida hoy es entonces una *sobre*estimación —un plan con 70 días hoy pudo tener 30 al enviarse, y estaba en regla— así que medir contra hoy produciría blockers falsos contra planes correctos.
+
+Comparar fechas internas del documento además hace las reglas **reproducibles**: auditar el mismo documento dentro de un año da los mismos hallazgos. Una regla anclada en "hoy" haría que una auditoría archivada cambiara de significado con el tiempo, justo lo contrario de la trazabilidad que exigen las Practice Parameters de IA.
+
+**Consecuencia aceptada:** si el documento no trae la segunda fecha, la regla **calla**. La de los 60 días solo se evalúa si consta la fecha de envío.
+
+**Ambigüedad de formato (`_molGap`).** `03/04/2026` es 3 de abril o 4 de marzo. Se asume EE. UU. (MM/DD) y esa lectura es la que **dispara**; las demás solo pueden **bajar** severidad, nunca disparar. Si alguna lectura salvaría el umbral, el hallazgo baja de `blocker` a `warning` y lo dice. Así no se avisa sobre un plan correcto solo porque su fecha se pueda leer de dos maneras.
+
+**Bug histórico, no reintroducir:** el `\s*` final del regex de etiqueta se tragaba el salto de línea, con lo que el corte por renglón quedaba sin nada que cortar y `"Date of plan:"` se llevaba la fecha de nacimiento del renglón siguiente — la misma regresión que `classifyTbdContext`. `_molLabeledDate` y `_molLabeledRange` recortan el espacio final del match antes de rebanar.
+
+Reglas: `MOL_PLAN_DATE_MISSING` · `MOL_PLAN_AGE_60D` · `MOL_REAUTH_WINDOW` · `MOL_DX_ASSESSMENT_24M` · `MOL_REASSESS_INTERVAL` · `MOL_PLAN_COVERS_PERIOD`. Categoría `payer_timelines`.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.

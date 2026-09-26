@@ -167,6 +167,50 @@ La intensidad son las horas entregadas DIRECTAMENTE al paciente, excluyendo mane
 
 Gobierna a esta herramienta, no a los documentos auditados: trazabilidad para rastrear errores hasta su origen, revelacion del alcance del uso de IA con alternativa sin IA, y canal estructurado de reporte de errores.
 
+### `MOL_PLAN_DATE_60D`
+
+**Fuente:** Molina Healthcare, ABA documentation requirements — julio 2026, Initial treatment plan  
+**Severidad:** blocker/warning  
+**Reglas que lo aplican:** `MOL_PLAN_DATE_MISSING`, `MOL_PLAN_AGE_60D`
+
+El plan debe haberse escrito o actualizado dentro de los 60 dias previos al envio para reautorizacion, y la fecha de redaccion debe constar en el documento.
+
+> ⚠️ Solo se evalua si el documento declara TAMBIEN la fecha de envio. No se mide contra la fecha de la auditoria: en esta consulta el paquete se manda al seguro antes de auditarlo, de modo que la edad medida hoy sobreestima la edad al enviar y produciria blockers falsos.
+
+### `MOL_REAUTH_WINDOW`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, Coverage & Prior Authorization Basics  
+**Severidad:** warning  
+**Reglas que lo aplican:** `MOL_REAUTH_WINDOW`
+
+Reautorizacion al menos cada 180 dias. El envio se acepta desde 30 dias antes del vencimiento y no mas tarde de 10 dias antes.
+
+### `MOL_DX_ASSESSMENT_24M`
+
+**Fuente:** Molina Clinical Policy No. 482 — 06/10/2026, 1.g.ii  
+**Severidad:** warning  
+**Reglas que lo aplican:** `MOL_DX_ASSESSMENT_24M`
+
+Si la evaluacion diagnostica estandarizada tiene mas de 24 meses, debe acompanarse de documentacion actualizada que describa los sintomas de ASD y el impacto funcional actuales.
+
+> ⚠️ El CDE no caduca para miembros de Medicaid; lo que se exige es la actualizacion, no una evaluacion nueva.
+
+### `MOL_REASSESS_INTERVAL`
+
+**Fuente:** Molina Clinical Policy No. 482 — 06/10/2026, 4.l  
+**Severidad:** warning  
+**Reglas que lo aplican:** `MOL_REASSESS_INTERVAL`
+
+Las reevaluaciones deben ocurrir al menos cada 6 meses.
+
+### `MOL_PLAN_COVERS_PERIOD`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, 2 y 3  
+**Severidad:** blocker  
+**Reglas que lo aplican:** `MOL_PLAN_COVERS_PERIOD`
+
+El behavior plan debe cubrir todo el periodo de autorizacion solicitado, hasta seis meses.
+
 
 ## ⚠️ Solo búsqueda — sin verificar
 
@@ -216,4 +260,4 @@ Planned ignoring nunca para agresion, SIB, elopement o destruccion; response blo
 
 ---
 
-**Totales:** 23 requisitos · 19 verificados contra texto primario · 1 solo por búsqueda · 3 convención clínica.
+**Totales:** 28 requisitos · 24 verificados contra texto primario · 1 solo por búsqueda · 3 convención clínica.
