@@ -285,6 +285,16 @@ Supervision minima del 10 % de las horas de servicio directo del RBT.
 
 ## 📋 Convención clínica — no normativa
 
+### `OFFICE_UNINTEGRATED_EDITS`
+
+**Fuente:** Convencion del consultorio  
+**Severidad:** warning  
+**Reglas que lo aplican:** `EDIT_SPANISH_PROSE`, `EDIT_UNINTEGRATED_NOTE`
+
+El documento que se envia no debe llevar correcciones sin integrar: prosa en otro idioma que la del documento, ni marcas de nota o revision (NOTA:, TODO, ??, <<...>>, revisar, pendiente).
+
+> ⚠️ NO hay fuente que exija el ingles: se busco en los cinco documentos de Molina y solo aparece el espanol como linea de atencion telefonica a los miembros. De ahi que sea convencion y warning, nunca blocker, y que el hallazgo diga que el espanol no esta prohibido. El defecto es la correccion sin integrar, no el idioma. Una cita textual del cuidador en espanol esta exenta: es practica legitima.
+
 ### `CPT_UNIT_MATH`
 
 **Fuente:** Convencion del consultorio y fee schedule de Florida  
@@ -318,4 +328,4 @@ Planned ignoring nunca para agresion, SIB, elopement o destruccion; response blo
 
 ---
 
-**Totales:** 34 requisitos · 30 verificados contra texto primario · 1 solo por búsqueda · 3 convención clínica.
+**Totales:** 35 requisitos · 30 verificados contra texto primario · 1 solo por búsqueda · 4 convención clínica.

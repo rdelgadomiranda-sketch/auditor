@@ -52,6 +52,8 @@ Date Of Report
 
 Con el corte por renglón, **las seis reglas de fechas estaban mudas** sobre los documentos de verdad, y `MOL_PLAN_DATE_MISSING` era un falso positivo sobre un documento que sí traía la fecha. El valor se busca ahora en el siguiente renglón no vacío, y el discriminador que impide reabrir el bug de abajo es que **un valor suelto no trae etiqueta**: si el renglón contiene `:` es otro campo y se rechaza; si es largo, es un párrafo y no una celda. Asegurado con cuatro casos de no-regresión.
 
+**Mojibake, segunda pasada.** El primer arreglo buscó solo secuencias de **2 bytes** (`Ã`, `Â`) y se declararon 0 restos. Quedaban **10 de 3 bytes** (`â` + dos continuaciones: `─` y `—`), todas en comentarios y ninguna visible para el analista. El patrón cubre ahora las dos clases. Lección: al comprobar mojibake hay que contemplar los tres largos, no solo el que produjo el síntoma que se vio.
+
 **Bug histórico, no reintroducir:** el `\s*` final del regex de etiqueta se tragaba el salto de línea, con lo que el corte por renglón quedaba sin nada que cortar y `"Date of plan:"` se llevaba la fecha de nacimiento del renglón siguiente — la misma regresión que `classifyTbdContext`. `_molLabeledDate` y `_molLabeledRange` recortan el espacio final del match antes de rebanar.
 
 Reglas: `MOL_PLAN_DATE_MISSING` · `MOL_PLAN_AGE_60D` · `MOL_REAUTH_WINDOW` · `MOL_DX_ASSESSMENT_24M` · `MOL_REASSESS_INTERVAL` · `MOL_PLAN_COVERS_PERIOD`. Categoría `payer_timelines`.
@@ -284,6 +286,27 @@ Tres blockers legítimos que se habrían perdido en silencio. Hay un caso por ca
 **Limitación conocida:** los patrones del bloque 1 son **solo en inglés** (`mother reported`, `father stated`). Un *"la madre refiere que probó respiración profunda"* no se exime todavía. Añadir las formas en español cambiaría también el comportamiento de la terminología, así que queda pendiente de decidirlo aparte.
 
 **Reparto entre las dos funciones, que conviene tener claro:** `yoga` es un **término** prohibido (`TERM_YOGA`, en `PROHIBITED_TERMS`) y no una intervención, así que lo coge `scanProhibitedTerms`. `scanProhibitedInterventions` no lo conoce. Un caso del harness lo fija, porque probar yoga con la función equivocada da un falso "pasa".
+
+---
+
+### 1.12 Corrección sin integrar (`scanUnintegratedEdits`)
+
+Observación de Rolando: *"una analista puede escribir en español las correcciones al assessment, por lo que puede hacer falta dar la alerta sobre eso"*.
+
+**El encuadre cambió la regla.** Una frase en español en medio del assessment no está mal *porque sea español*. Se buscó en los cinco documentos de Molina y **ninguno exige el inglés**; lo único que aparece es el español como **línea de atención telefónica a los miembros**, o sea que el pagador atiende activamente a familias hispanohablantes. Está mal porque es **una corrección que nadie integró**, y el español es solo el síntoma más visible: el mismo defecto ocurre en inglés con un `NOTA:`, un `??` o un `revisar esto` que se quedó dentro.
+
+Así que la regla es de **corrección sin integrar, no de idioma**. Siempre `warning`: sin fuente que exija el inglés, la fila va marcada `convencion` y no `primaria`, y `citationFor` devuelve `null` — el auditor no la cita como norma. Categoría `formatting_error`, donde ya viven `STO_DUP_LABEL` y `STO_GLUED_REWRITE`: daño mecánico al documento, no juicio clínico.
+
+**Dos detectores:**
+
+- `EDIT_SPANISH_PROSE` — prosa en español. Umbral **≥8 palabras funcionales por ventana de 300 caracteres**, con solape de 150. Validado: **cero falsos positivos en los ~600.000 caracteres** de los tres documentos reales. Se excluyen del léxico las palabras que también son inglesas (`no`, `son`, `si`), que solo restarían precisión.
+- `EDIT_UNINTEGRATED_NOTE` — marcas de nota: `TODO`, `FIXME`, `NOTA:`, `OJO:`, `COMENTARIO:`, `??`, `[?]`, `<<…>>`, y los imperativos en español (`revisar`, `corregir`, `verificar`, `pendiente`, `falta`).
+
+**La excepción que importa:** una **cita textual del cuidador en español** es práctica legítima —el pagador quiere el input de la familia documentado— y se exime reutilizando `_quotedOrCaregiverReported`. Con un detalle que falló en la primera versión: la exención se comprueba **donde empieza el español**, no al inicio de la ventana. Con una cita al principio del documento la ventana arranca en 0, no hay nada detrás que mirar y la exención no se aplicaba.
+
+**Descartados a propósito** por ambiguos: `needs review` (legítimo: *"the plan needs review at 6 months"*), `check this` (legítimo: *"check this box"*) y `XXX` (se usa para tachar nombres). `XXXX+`, `TBD`, `[insert …]` y los puntos suspensivos **no se tocan**: los coge `scanPlaceholders`, y hay casos que lo fijan.
+
+**Etiquetas de categoría que faltaban.** Al escribir esto se descubrió que `formatting_error` y `medical_necessity` **no estaban en `REPORT_CAT_LABELS`**, así que `STO_DUP_LABEL` y `SCOPE_INTENSITY_*` salían en el reporte con el nombre crudo de la categoría. Añadidas. `language_style` y `prohibited_concept` **no** se añadieron: son campos de definición de `PROHIBITED_TERMS` que se remapean a `emotional_state` o `prohibited_intervention` al emitir, así que nunca llegan a un hallazgo.
 
 ---
 
