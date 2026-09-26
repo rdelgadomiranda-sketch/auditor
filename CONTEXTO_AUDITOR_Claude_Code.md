@@ -14,6 +14,107 @@
 
 ---
 
+## 1.1 Pagador activo (`PAYER`) — leer antes de tocar prompts
+
+**Molina Healthcare of Florida**, vigente desde julio 2026. Antes el nombre del pagador estaba escrito a mano en **seis** lugares, dos de ellos prompts de IA: al cambiar de aseguradora, el auditor seguía redactando para el pagador anterior **en silencio**. Ahora vive una sola vez, en `const PAYER={nombre,corto}` al inicio del `<script>`.
+
+- `PAYER.nombre` va en prosa y en los prompts; `PAYER.corto` en etiquetas de interfaz.
+- Cambiar de pagador = editar dos líneas. **No** volver a escribirlo a mano.
+- Se usa en: prompt conceptual (dos sitios), prompt de necesidad médica, marcador del formulario de apelación, y lista de no-traducir del prompt de traducción. Los cuatro están dentro de template literals — verificado ejecutando la página, no por grep.
+
+**Molina NO reemplaza a AHCA.** Su guía se declara *"based in the AHCA BA Services Coverage Policy (December 2024)"*: las reglas de Florida siguen vigentes y la capa de pagador se suma. Ver `FUNDAMENTO_LITERATURA.md` §5.
+
+**Lo que NO se hizo, a propósito:** el texto sugerido de supervisión del 10 % atribuía el requisito a "Sunshine Health requirements". **Ningún documento de Molina menciona el 10 %**, y la fila `BACB_SUPERVISION_10PCT` está marcada `verificacion:'busqueda'`. Cambiar el nombre habría inventado un requisito del pagador nuevo: se quitó la atribución y quedó solo "per BACB guidelines".
+
+---
+
+## 1.2 Bloque de fechas del pagador (`scanPayerDates`) — la regla que lo gobierna
+
+Cinco requisitos de Molina son puramente temporales (FUNDAMENTO §5.3.2). Se implementan sin IA: fechas y aritmética.
+
+**Principio, y no es negociable: solo se comparan fechas que estén AMBAS dentro del documento. Nunca contra la fecha de la auditoría.**
+
+El primer diseño medía la edad del plan contra *hoy*, razonando que el envío ocurre hoy o después y que por tanto la edad de hoy es una cota inferior. **Rolando lo corrigió: en su consulta los analistas mandan el paquete al seguro PRIMERO y lo auditan DESPUÉS.** El envío ya ocurrió. La edad medida hoy es entonces una *sobre*estimación —un plan con 70 días hoy pudo tener 30 al enviarse, y estaba en regla— así que medir contra hoy produciría blockers falsos contra planes correctos.
+
+Comparar fechas internas del documento además hace las reglas **reproducibles**: auditar el mismo documento dentro de un año da los mismos hallazgos. Una regla anclada en "hoy" haría que una auditoría archivada cambiara de significado con el tiempo, justo lo contrario de la trazabilidad que exigen las Practice Parameters de IA.
+
+**Consecuencia aceptada:** si el documento no trae la segunda fecha, la regla **calla**. La de los 60 días solo se evalúa si consta la fecha de envío.
+
+**Ambigüedad de formato (`_molGap`).** `03/04/2026` es 3 de abril o 4 de marzo. Se asume EE. UU. (MM/DD) y esa lectura es la que **dispara**; las demás solo pueden **bajar** severidad, nunca disparar. Si alguna lectura salvaría el umbral, el hallazgo baja de `blocker` a `warning` y lo dice. Así no se avisa sobre un plan correcto solo porque su fecha se pueda leer de dos maneras.
+
+**Bug histórico, no reintroducir:** el `\s*` final del regex de etiqueta se tragaba el salto de línea, con lo que el corte por renglón quedaba sin nada que cortar y `"Date of plan:"` se llevaba la fecha de nacimiento del renglón siguiente — la misma regresión que `classifyTbdContext`. `_molLabeledDate` y `_molLabeledRange` recortan el espacio final del match antes de rebanar.
+
+Reglas: `MOL_PLAN_DATE_MISSING` · `MOL_PLAN_AGE_60D` · `MOL_REAUTH_WINDOW` · `MOL_DX_ASSESSMENT_24M` · `MOL_REASSESS_INTERVAL` · `MOL_PLAN_COVERS_PERIOD`. Categoría `payer_timelines`.
+
+---
+
+### 1.3 El CDE como documento separado (`scanCdeSeparate`)
+
+Para Molina el **CDE** (Comprehensive Diagnostic Evaluation) y el **behavior assessment** son **dos requisitos separados**. Un CDE, incluso uno que traiga puntuaciones Vineland-3 o BASC-3 dentro de la evaluación diagnóstica, *no* satisface el requisito de AHCA del behavior assessment: hacen falta los informes de puntuación completos administrados y puntuados por el proveedor de BA. *"Both documents are required; one does not replace the other."*
+
+**El principio que gobierna el bloque: el auditor no ve el paquete.** Ve **un** texto extraído —el assessment o la reevaluación—. El CDE es otro archivo, que puede existir perfectamente sin aparecer en este texto. Por eso el bloque **nunca afirma "falta el CDE"**: solo puede afirmar cosas del documento que tiene delante. De ahí dos clases de regla:
+
+- **Concluyentes (`blocker`).** El defecto está **en este texto**. El documento declara que la evaluación diagnóstica cubre el requisito del behavior assessment (`MOL_CDE_SUBSTITUTION`), o apoya el FBA, el BIP o la función de la conducta en el Vineland-3 o el BASC-3 (`MOL_VINELAND_NOT_FBA`), que Molina prohíbe de forma expresa. Aquí no hay nada que el paquete pueda salvar: lo escrito ya es el error.
+- **No concluyentes (`warning` / `notice`).** El documento **no menciona** algo. Eso no prueba que falte en el paquete, igual que en `MOL_PLAN_DATE_MISSING` un encabezado no extraído no prueba que falte la fecha. El hallazgo pide **verificar**, y lo dice con esas palabras.
+
+**Lo que NO está aquí a propósito:** auditar el *contenido* del CDE —sus ocho elementos obligatorios, la observación directa, la firma—. Ese documento no es el que se sube. Cuando se auditen paquetes completos, ese es el bloque siguiente.
+
+**La guarda que evita el falso positivo caro (`MOL_CDE_DX_FROM_TOOL`).** Molina rechaza que una puntuación haga de diagnóstico: *"A clinician must state the diagnosis explicitly."* Pero *"diagnóstico confirmado por la Dra. Pérez con el ADOS-2"* es **correcto**. La regla exige un verbo de atribución entre instrumento y diagnóstico **y** que en la cláusula no haya ningún indicio de persona o institución (`Dr.`, `PhD`, `psychologist`, `hospital`…). Con clínico presente, calla.
+
+**Tensión con R14, comprobada y descartada.** R14 (`GOALS_NOT_DSM_CRITERIA`) advierte contra convertir los criterios del DSM en objetivos de tratamiento; Molina **exige** el nivel de severidad del DSM-5. No se pisan: enunciar el *nivel* no es usar los *criterios* como lista de metas. Verificado en `cde_browser.js`, no supuesto — un documento que dice "DSM-5 Level 2 (requiring substantial support)" no dispara R14 ni pide el nivel de nuevo.
+
+**Umbrales deliberadamente bajos.** `MOL_IMPAIRMENT_ONE_SETTING` solo salta si el documento nombra menos de **dos** de los tres entornos (hogar, escuela, comunidad) en *todo* el texto. Un assessment normal los nombra, así que salta solo en el caso real de un documento que nunca sale de un entorno. `MOL_DSM5_SEVERITY_MISSING` y `MOL_IMPAIRMENT_ONE_SETTING` salen de la lista de *causas de devolución*, no de la de elementos obligatorios: de ahí `warning` y `notice`, nunca `blocker`.
+
+Reglas: `MOL_CDE_SUBSTITUTION` · `MOL_VINELAND_NOT_FBA` · `MOL_CDE_NOT_REFERENCED` · `MOL_CDE_DX_FROM_TOOL` · `MOL_CDE_PRACTITIONER_UNCLEAR` · `MOL_CDE_SCHOOL_LETTER` · `MOL_DSM5_SEVERITY_MISSING` · `MOL_IMPAIRMENT_ONE_SETTING`. Categoría `cde_requirement`.
+
+---
+
+### 1.4 Criterios de alta objetivos (`scanDischargeCriteria`)
+
+Molina, QRG §8: *"A transition and discharge plan must be established at the initiation of BA services not deferred until the member is ready to discharge"* y *"Discharge criteria should be objective and individualized, not vague. 'When clinically appropriate' is not a discharge criterion."* El ejemplo que da el pagador es cuantitativo: **0 instancias de agresión durante 6 meses, cuando el nivel actual es de 50 al día**.
+
+Es la lógica de `PLACEHOLDER_TBD_CONVENTION` aplicada al alta: el campo existe, pero su contenido no compromete a nada. La diferencia es que aquí el placeholder no es la cadena `TBD` sino una **fórmula clínica vaga**, que *parece* contenido y no lo es.
+
+**Tres cosas que el bloque NO hace, a propósito:**
+
+1. **No avisa de que falte la sección.** Ya lo hacen `SEC_TRANSITION` (en `REQUIRED_SECTIONS`) y `dischargePlan` (en `scanAdminRequiredElements`). Sin ancla de alta en el texto, el bloque **calla**. Dos hallazgos para una misma laguna es el ruido que hace que un analista deje de leer el panel.
+2. **No reclama los cinco criterios de alta de AHCA** que el pagador reproduce. Esos son los criterios *del pagador* para cuando el alta procede, no una lista que el plan deba copiar: copiarla es justo lo contrario de *"individualized to the specific member"*. De ahí que reproducirla sea un **hallazgo** (`MOL_DISCHARGE_POLICY_BOILERPLATE`) y no un requisito.
+3. **No toca la excepción de `TBD` en la FECHA de alta**, que sigue siendo convención válida (`TBD_DATE_CONTEXT` incluye `discharge date`). Un `"Discharge criteria: TBD"` ya produce blocker por la vía existente, así que si hay un TBD en la región el bloque **le cede la palabra**. Las cuatro lecturas de `classifyTbdContext` están aseguradas en `alta_browser.js` como regresión.
+
+**Jerarquía excluyente.** Exactamente **un** hallazgo para "los criterios no son objetivos", el que mejor describa el caso. Se diagnostica en orden —diferido → fórmula vaga → calco de la política → nada medible— y el primero que encaja habla. Sin esto, un plan malo recibiría cuatro tarjetas que dicen lo mismo.
+
+**La región, sin slicer de secciones.** El auditor no tiene uno: `REQUIRED_SECTIONS` solo busca palabras clave en todo el texto. `_altRegions` arranca en el ancla de alta y cierra en el siguiente renglón corto con nombre de otra sección, con tope de 1800 caracteres. Y el reparto de la evidencia es deliberado: la **positiva** (criterio medible, titración de horas) se busca en la **unión** de todas las regiones; la **negativa** (fórmula vaga) por **cláusula**. Así un ancla que caiga en un índice o en una lista de comprobación no puede producir un falso positivo, solo dejar de aportar.
+
+**El medible no es "hay un dígito".** La sección vecina trae horas, fechas y porcentajes de supervisión. Un criterio de alta empareja un número con un porcentaje, un sustantivo de conteo conductual (instancias, episodios, ocurrencias) o una duración sostenida. Asegurado con un caso donde el `10%` y las `12 consecutive weeks` del plan de supervisión **no** salvan a una sección de alta vaga.
+
+**Dos patrones corregidos antes de probar**, los dos falsos positivos sobre documentos correctos: un tercer patrón de aplazamiento marcaba *"el plan se revisará cuando el miembro se acerque al alta"*, que es exactamente lo que el pagador exige (se eliminó; el primer patrón ya cubre el aplazamiento real por su lista de verbos, que excluye `updated` a propósito); y `as needed` disparaba sobre *"el entrenamiento a cuidadores se ajustará según se necesite"* (pasó a un segundo nivel que exige que la cláusula hable del **alta**, no solo de la transición).
+
+Reglas: `MOL_DISCHARGE_DEFERRED` · `MOL_DISCHARGE_VAGUE` · `MOL_DISCHARGE_POLICY_BOILERPLATE` · `MOL_DISCHARGE_NOT_OBJECTIVE` · `MOL_TRANSITION_NO_TITRATION` · `MOL_DISCHARGE_SCHOOL_TRANSITION`. Categoría `discharge_criteria`.
+
+---
+
+### 1.5 Coherencia interna de las horas (`scanHoursConsistency`)
+
+**Decisión de Rolando, y es la correcta:** el auditor **no juzga cuántas horas pedir**. Se piden 30, el seguro las acepta o las reduce, y esa negociación no es asunto del auditor. Lo que sí es un defecto del documento es que en una sección se pidan unas horas y en otra del mismo plan aparezcan otras.
+
+Por eso **no hay aquí ningún umbral**: ni el techo de 40 h de Florida, ni las 25 h directas de MCP 482, ni los rangos de CASP. Solo coherencia interna. Misma forma que `AGE_INCONSISTENCY`: categoría `internal_contradiction`, severidad `warning`, el sistema **alerta** y la decisión es del analista. Sin fila en `AUDIT_REQUIREMENTS`, igual que `AGE_INCONSISTENCY`: la coherencia interna no es un requisito de una fuente externa, y `citationFor` devuelve `null` correctamente.
+
+**El problema real de esta regla son los falsos positivos.** Un plan bien escrito está lleno de cifras de horas distintas y todas correctas: 97153 a 25 h, 97155 a 4 h, 97156 a 2 h, "3 horas por sesión", "hasta 40 h por semana" citando la política, "previamente autorizado a 20 h", "asiste a la escuela 25 h". Comparar toda cifra contra toda cifra avisaría en **cada** plan y el panel dejaría de servir. De ahí la regla que gobierna el bloque:
+
+> **Solo se comparan cifras que AMBAS digan ser la misma magnitud.**
+
+Un total declarado con otro total declarado. Las horas de un código, con la línea de ese mismo código. Nunca un total contra el desglose de una línea, ni una cifra del pasado contra la que se solicita, ni un techo de la política contra lo pedido: no son la misma magnitud. Cada exclusión de `HRS_RE_NOT_TOTAL` es un falso positivo que habría avisado en un plan correcto, y cada una tiene su caso.
+
+**La exclusión que sale de la tensión CASP / pagador** (ver `FUNDAMENTO_LITERATURA.md` §5.2). Un total declarado que no cuadra con la suma de *todas* las líneas puede estar cuadrando con la suma de las **directas**, porque CASP —y MCP 482, que usa la palabra *direct*— definen la intensidad excluyendo supervisión y entrenamiento a cuidadores. Eso no es una incongruencia, **es la otra métrica**. `HOURS_TOTAL_VS_CPT_SUM` solo avisa si el total no cuadra con **ninguna** de las dos lecturas, y el hallazgo nombra las dos sumas para que el analista vea cuál habría cuadrado.
+
+**Bug histórico, tercera vez:** el `\s*` del separador entre etiqueta y cifra cruzaba el salto de línea, así que `"Total weekly hours\n5 goals are targeted"` daba 5 horas. El separador exige ahora forma de campo o de celda (`[ \t]*[:=|][ \t]*` o `[ \t]+`), sin cruzar renglón — la misma disciplina que `_molLabeledDate` y `classifyTbdContext`. Y `total hours` a secas se descartó por genérico ("total hours of caregiver training").
+
+**Guarda de ambigüedad en `HOURS_CODE_CONFLICT`:** si un código trae más de una línea en el canónico (p. ej. `97155` y `97155 HN`), no se puede saber a cuál se refiere la narrativa, así que **el código se descarta**.
+
+Reglas: `HOURS_TOTAL_CONFLICT` · `HOURS_TOTAL_VS_CPT_SUM` · `HOURS_CODE_CONFLICT`. Categoría `internal_contradiction`. Corre en el bloque de `runAudit` que tiene el canónico, junto a `scanFloridaServiceLimits`.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.

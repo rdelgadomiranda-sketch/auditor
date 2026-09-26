@@ -25,7 +25,7 @@ La evaluacion inicial debe incluir administracion, puntuacion y reporte del Vine
 
 Hasta 40 horas semanales de servicios de intervencion BA; tamano maximo de grupo de seis participantes; adaptive behavior treatment with protocol modification y family adaptive behavior treatment guidance solo por Lead Analyst o BCaBA.
 
-> ⚠️ Las reglas de horas son warning y no blocker: la metrica de intensidad esta en disputa entre CASP y el pagador. Ver CASP_INTENSITY_METRIC.
+> ⚠️ Las reglas de horas son warning y no blocker, por decision de Rolando: el auditor no juzga cuantas horas pedir, eso lo negocia el analista con el seguro. Lo que si audita es la coherencia interna (scanHoursConsistency). Sobre la metrica: Molina la zanjo a favor de CASP -- MCP 482 criterio 5 dice "25 direct hours per week", con la palabra direct -- pero NO zanjo el techo: el 40 de AHCA sigue siendo un total de lineas de intervencion, de modo que en Florida corren los dos medidores a la vez. Ver CASP_INTENSITY_METRIC.
 
 ### `FL_4_2_2_PARENT`
 
@@ -167,6 +167,98 @@ La intensidad son las horas entregadas DIRECTAMENTE al paciente, excluyendo mane
 
 Gobierna a esta herramienta, no a los documentos auditados: trazabilidad para rastrear errores hasta su origen, revelacion del alcance del uso de IA con alternativa sin IA, y canal estructurado de reporte de errores.
 
+### `MOL_PLAN_DATE_60D`
+
+**Fuente:** Molina Healthcare, ABA documentation requirements — julio 2026, Initial treatment plan  
+**Severidad:** blocker/warning  
+**Reglas que lo aplican:** `MOL_PLAN_DATE_MISSING`, `MOL_PLAN_AGE_60D`
+
+El plan debe haberse escrito o actualizado dentro de los 60 dias previos al envio para reautorizacion, y la fecha de redaccion debe constar en el documento.
+
+> ⚠️ Solo se evalua si el documento declara TAMBIEN la fecha de envio. No se mide contra la fecha de la auditoria: en esta consulta el paquete se manda al seguro antes de auditarlo, de modo que la edad medida hoy sobreestima la edad al enviar y produciria blockers falsos.
+
+### `MOL_REAUTH_WINDOW`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, Coverage & Prior Authorization Basics  
+**Severidad:** warning  
+**Reglas que lo aplican:** `MOL_REAUTH_WINDOW`
+
+Reautorizacion al menos cada 180 dias. El envio se acepta desde 30 dias antes del vencimiento y no mas tarde de 10 dias antes.
+
+### `MOL_DX_ASSESSMENT_24M`
+
+**Fuente:** Molina Clinical Policy No. 482 — 06/10/2026, 1.g.ii  
+**Severidad:** warning  
+**Reglas que lo aplican:** `MOL_DX_ASSESSMENT_24M`
+
+Si la evaluacion diagnostica estandarizada tiene mas de 24 meses, debe acompanarse de documentacion actualizada que describa los sintomas de ASD y el impacto funcional actuales.
+
+> ⚠️ El CDE no caduca para miembros de Medicaid; lo que se exige es la actualizacion, no una evaluacion nueva.
+
+### `MOL_REASSESS_INTERVAL`
+
+**Fuente:** Molina Clinical Policy No. 482 — 06/10/2026, 4.l  
+**Severidad:** warning  
+**Reglas que lo aplican:** `MOL_REASSESS_INTERVAL`
+
+Las reevaluaciones deben ocurrir al menos cada 6 meses.
+
+### `MOL_PLAN_COVERS_PERIOD`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, 2 y 3  
+**Severidad:** blocker  
+**Reglas que lo aplican:** `MOL_PLAN_COVERS_PERIOD`
+
+El behavior plan debe cubrir todo el periodo de autorizacion solicitado, hasta seis meses.
+
+### `MOL_CDE_REQUIRED`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, secc. 1, Who Can Perform a CDE / Required Elements  
+**Severidad:** warning  
+**Reglas que lo aplican:** `MOL_CDE_NOT_REFERENCED`, `MOL_CDE_DX_FROM_TOOL`, `MOL_CDE_PRACTITIONER_UNCLEAR`, `MOL_CDE_SCHOOL_LETTER`
+
+Toda autorizacion inicial exige una evaluacion diagnostica integral (CDE) hecha por un profesional de una lista cerrada (PCP de familia, medicina interna o pediatria; medico de pediatria del desarrollo y del comportamiento, neurodesarrollo, neurologia pediatrica o psiquiatria; psicologo infantil PhD o PsyD; psicologo escolar LICENCIADO -el no licenciado no puede hacerla-; o equipo multidisciplinario dirigido por uno de ellos). El diagnostico debe enunciarlo el profesional evaluador de forma explicita: la puntuacion de un instrumento de cribado como el CARS o el ADOS no constituye un diagnostico formal, y las cartas escolares de acomodaciones por si solas no bastan.
+
+> ⚠️ El auditor ve un solo documento, no el paquete: por eso estas reglas piden verificar y no bloquean. Solo se comprueba lo que el behavior assessment dice sobre la procedencia del diagnostico, nunca el contenido del CDE, que es otro archivo.
+
+### `MOL_CDE_VS_BEHAVIOR_ASSESSMENT`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, secc. 1, CDE vs. Behavior Assessment  
+**Severidad:** blocker  
+**Reglas que lo aplican:** `MOL_CDE_SUBSTITUTION`, `MOL_VINELAND_NOT_FBA`
+
+El CDE y el behavior assessment son dos requisitos SEPARADOS. Un CDE, incluso uno que contenga puntuaciones Vineland-3 o BASC-3 dentro de la evaluacion diagnostica, no satisface el requisito de AHCA de un behavior assessment enviado con la solicitud: hacen falta los informes de puntuacion completos de Vineland-3 y BASC-3 PRQ administrados y puntuados por el proveedor de BA. Ambos documentos se exigen; uno no reemplaza al otro. Estos instrumentos nunca se usan para construir el FBA ni el BIP.
+
+### `MOL_CDE_SEVERITY_CONTEXT`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, secc. 1 y 2, What Distinguishes a Thorough CDE / CDE-Related Snags  
+**Severidad:** warning  
+**Reglas que lo aplican:** `MOL_DSM5_SEVERITY_MISSING`, `MOL_IMPAIRMENT_ONE_SETTING`
+
+Entre las causas frecuentes de devolucion estan no especificar el nivel de severidad del DSM-5 para el TEA (nivel 1, 2 o 3) con los apoyos que requiere, porque su ausencia deja sin fundamento diagnostico la intensidad solicitada, y describir el deterioro funcional en un solo entorno o en ninguno: un diagnostico sin deterioro funcional documentado no establece por si solo la necesidad de servicios intensivos.
+
+> ⚠️ Salen de la lista de causas de devolucion, no de la de elementos obligatorios: por eso warning y notice, nunca blocker.
+
+### `MOL_DISCHARGE_OBJECTIVE`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, secc. 8, Transition Planning & Discharge Criteria  
+**Severidad:** blocker/warning  
+**Reglas que lo aplican:** `MOL_DISCHARGE_DEFERRED`, `MOL_DISCHARGE_VAGUE`, `MOL_DISCHARGE_POLICY_BOILERPLATE`, `MOL_DISCHARGE_NOT_OBJECTIVE`
+
+El plan de transicion y alta debe establecerse AL INICIO de los servicios, no aplazarse hasta que el miembro este listo para el alta, y revisarse y actualizarse a lo largo del tratamiento. Los criterios de alta deben ser objetivos e individualizados, no vagos: "When clinically appropriate is not a discharge criterion". Deben individualizarse al miembro y a sus habilidades actuales, con criterios realistas para un nivel de apoyo menor (el ejemplo de la propia guia: 0 instancias de agresion durante 6 meses cuando el nivel actual es de 50 al dia).
+
+> ⚠️ Las cuatro reglas son excluyentes por diseno: un solo hallazgo para "los criterios no son objetivos", el que mejor describa el caso. La AUSENCIA de la seccion no se reporta aqui, ya la cubren SEC_TRANSITION y dischargePlan. Los cinco criterios de alta que la guia reproduce son los del pagador para cuando el alta procede, NO una lista que el plan deba copiar: copiarla es lo contrario de individualizar, de ahi MOL_DISCHARGE_POLICY_BOILERPLATE.
+
+### `MOL_TRANSITION_PLAN_CONTENT`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, secc. 8, What a Strong Transition Plan Includes; secc. 5; checklist Transition Plan Update  
+**Severidad:** warning  
+**Reglas que lo aplican:** `MOL_TRANSITION_NO_TITRATION`, `MOL_DISCHARGE_SCHOOL_TRANSITION`
+
+El plan de transicion debe detallar como se proyecta reducir las horas a medida que se alcanzan las metas de transicion, con metas SMART de las habilidades necesarias para un nivel de cuidado menor, progreso documentado en cada reevaluacion, recursos comunitarios para mantener las ganancias tras el alta y mayor frecuencia de entrenamiento a cuidadores al acercarse a los criterios. Para miembros en edad escolar cuyo ABA a tiempo completo impide la asistencia, un plan documentado de traspaso a un entorno escolar.
+
+> ⚠️ La titracion de horas se exige en tres lugares distintos de la guia, senal de que falta a menudo.
+
 
 ## ⚠️ Solo búsqueda — sin verificar
 
@@ -216,4 +308,4 @@ Planned ignoring nunca para agresion, SIB, elopement o destruccion; response blo
 
 ---
 
-**Totales:** 23 requisitos · 19 verificados contra texto primario · 1 solo por búsqueda · 3 convención clínica.
+**Totales:** 33 requisitos · 29 verificados contra texto primario · 1 solo por búsqueda · 3 convención clínica.

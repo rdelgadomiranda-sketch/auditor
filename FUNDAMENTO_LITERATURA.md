@@ -152,7 +152,151 @@ Vinculantes por incorporación (ver §1).
 
 ---
 
-## 5. Literatura secundaria — **[V]**
+## 5. Molina Healthcare — capa de pagador (vigente julio 2026) **[P]**
+
+> **Molina no reemplaza a AHCA: se apila encima.** La guía de Florida declara en portada *"Based in: AHCA BA Services Coverage Policy (December 2024)"*. Las reglas de §3 siguen vigentes; lo que cambia es que ahora hay exigencias de pagador que se suman.
+
+**Documentos leídos** (los cinco, texto primario):
+
+| Documento | Fecha | Qué es | Peso |
+|---|---|---|---|
+| **MHFL Comprehensive BA QRG** v1.0, 20 pp. | efectiva **julio 2026** | Guía de autorización y documentación de Molina Florida | **Principal.** Es lo que aplica el revisor |
+| **Molina Clinical Policy No. 482** | aprob. **06/10/2026**, revisión jun. 2027 | Criterios de necesidad médica: iniciación, continuación, alta | **Crítico.** Aquí están los umbrales |
+| ABA documentation requirements, 2 pp. | s.f. | Checklist de plan inicial y continuado | Concreto y verificable |
+| BA Quick Reference Guide 2026 | rev. 02/05/2026 | Facturación, códigos, contactos | Casi todo administrativo |
+| Marketplace BID — Autism Spectrum Disorder | 2024 | Planes comerciales, 15 estados | Marginal: no es Medicaid |
+
+### 5.1 Lo que CONFIRMA — cinco reglas suben de rango
+
+Pasan de "inferidas de CASP" a **exigidas contractualmente por el pagador**. Eso cambia su fuerza en una apelación.
+
+| Regla nuestra | Texto de Molina |
+|---|---|
+| **R4** tabla + gráfico por conducta | *"Each behavior under treatment must have its own data table and corresponding graph for reauthorization requests"* (QRG §2) — idéntico |
+| **R1** instrumentos núcleo | Repetido literal: Vineland-3 Comprehensive Parent Interview Form **todos** los miembros, Maladaptive Behavior Domain **≥3 años**, BASC-3 PRQ **2–18**, *"complete scoring report including outcome measure scores"*, cada 12 meses (QRG §4A) |
+| **R7** participación parental | *"If a parent or guardian cannot participate, this must be documented with explanation and a plan to mitigate impacts"* (QRG §2) — idéntico |
+| **R10** fuente de evidencia de la función | Molina va **más lejos**: *"Naming the function of a behavior (attention, escape, sensory, tangible) is not sufficient by itself"* y *"Vineland-3 and BASC-3 scores alone do not constitute an FBA… they are never used to construct the FBA or BIP"* (QRG §2 y §4B) |
+| **R20** alcance ↔ intensidad | *"comprehensive (multiple developmental domains) vs. focused (specific skills or behaviors); comprehensive treatment typically requires greater intensity"* (QRG §5) |
+
+### 5.2 Lo que RESUELVE — la métrica de intensidad, y un umbral nuevo
+
+R9 se bajó a `warning` porque la métrica estaba en disputa: CASP define intensidad como horas **directas** (excluye entrenamiento a cuidadores, supervisión y manejo de caso), pero Florida no lo precisaba. Ver `CASP_INTENSITY_METRIC`.
+
+**Molina zanja la MÉTRICA, no el techo.** MCP 482 fija el disparador en **"25 direct hours per week"** — usa explícitamente *direct*. Es la métrica de CASP, ahora en boca del pagador, y está en el cuerpo nacional de la política (no en un añadido estatal: verificado).
+
+> ⚠️ **Corrección a una versión anterior de esta sección, que decía "Molina lo zanja" a secas.** Zanja *qué cuenta el número*, no *cuál es el techo*. El 40 h de AHCA (§4.2.2) sigue siendo un **total de líneas de intervención** —la propia política enumera *protocol modification* y *family guidance* entre ellas— y MCP 482 no deroga una regla estatal; su propio disclaimer dice que los requisitos legales del estado pueden mandar. **En Florida corren los dos medidores a la vez, y un mismo plan puede estar por encima de uno y por debajo del otro.** 30 h de 97153 + 8 h de 97155 + 4 h de 97156 = 42 totales (excede el techo de Florida) pero 30 directas (dentro del rango comprehensivo de CASP).
+
+> ⚠️ **El umbral de "15 hours" que aparece junto al criterio 5 NO es de Molina ni de Florida.** Es del *South Carolina Department of Health and Human Services, ASD Services Provider Manual*, citado como nota superpuesta: MCP 482 tal como está emitido trae siete anotaciones de Carolina del Sur y **cero** menciones a Florida. Una regla construida sobre ese 15 estaría importando el manual de Medicaid de otro estado.
+
+> ⚠️ **El quinto documento (`bid_asd`) es de Marketplace, no de Medicaid.** Es un *Marketplace National Regional Benefit Interpretation Document*; lista Florida entre sus estados, pero rige planes de intercambio. Su cifra —*"at least 20 hours per week over a six-month period"*— es además un **piso** para el nivel intensivo, no un techo: va en dirección contraria a todo lo demás. Solo aplica si algún cliente está en un plan Marketplace de Molina en vez de Medicaid.
+
+Por encima de 25 h directas exige **todo** lo siguiente (MCP 482, criterio 5 en iniciación y criterio 11 en continuación):
+
+- Impairment funcional evidenciado por **uno** de: deficiencias significativas en múltiples dominios · conductas persistentes que amenazan la seguridad e interfieren con el progreso
+- Por qué esa intensidad es necesaria para los impairments específicos
+- **Por qué las metas no se pueden alcanzar con menos horas o modelos alternativos** (solo en continuación)
+- Período de tratamiento definido, con plazo de reevaluación **≥ cada 6 meses** y **tapering planificado**
+- Revisión continua de comorbilidades
+
+> **Para Molina el umbral operativo no es 40 h, es 25 h directas.** El techo de 40 h de Florida (§4.2.2) sigue siendo el máximo absoluto; 25 h es donde empieza la carga probatoria.
+
+### 5.3 Lo que AÑADE — requisitos que hoy no auditamos
+
+**5.3.1 El CDE es un documento separado — causa #1 de denegación según ellos mismos.**
+
+Molina lo dice dos veces, en §1 y en las FAQ: *"a CDE (even one that includes Vineland-3 or BASC-3 scores within the diagnostic evaluation) does not satisfy the separate AHCA requirement for a behavior assessment… Both documents are required; one does not replace the other."*
+
+El **Comprehensive Diagnostic Evaluation** tiene lista cerrada de quién puede hacerlo (PCP con especialidad en familia/interna/pediatría · pediatra del desarrollo o neurodesarrollo, neurología pediátrica, psiquiatría · psicólogo infantil PhD/PsyD · psicólogo escolar **licenciado** —*"an unlicensed school psychologist may not conduct a CDE"*— o equipo multidisciplinario liderado por uno de ellos) y ocho elementos obligatorios:
+
+diagnóstico formal **declarado por el clínico** (*"not just a score from a screening tool such as CARS or ADOS"*) · antecedentes y motivo de consulta · **observación directa documentada** · testing diagnóstico con puntuación, interpretación y significación clínica (*"School accommodation letters alone are not sufficient"*) · instrumentos alineados al estándar de cuidado · recomendaciones de tratamiento individualizadas (*"Generic recommendations are insufficient"*) · **firma y fecha del practicante** · **input de padre/tutor** reflejado en los hallazgos.
+
+Y tres marcadores de CDE sólido: diagnóstico **mapeado a criterios DSM-5** con ejemplos de este niño · **nivel de severidad DSM-5 (1, 2 o 3)** con necesidades de apoyo descritas · **impairment funcional documentado en más de un entorno** (*"A diagnosis without documented functional impairment does not by itself establish the need for intensive services"*).
+
+**5.3.2 Fechas — aritmética pura, cero ambigüedad.** El bloque más barato de implementar y el que más devoluciones causa.
+
+| Requisito | Umbral | Fuente |
+|---|---|---|
+| Plan escrito o actualizado antes de enviar a reautorización | **60 días** | checklist de documentación |
+| Reautorización | al menos cada **180 días**; enviar entre 30 días antes y **no menos de 10 días** antes del vencimiento | QRG, Coverage & PA Basics + FAQ |
+| Evaluación diagnóstica estandarizada antigua | **> 24 meses** → exige documentación actualizada de síntomas ASD e impacto funcional | MCP 482, 1.g.ii |
+| Reassessments | **≥ cada 6 meses** | MCP 482, 4.l |
+| El behavior plan debe cubrir | **todo el período solicitado (hasta 6 meses)** | QRG §2 y §3 |
+
+**5.3.3 Transición y alta — conecta directo con el trabajo de TBD.**
+
+*"A transition and discharge plan must be established at the initiation of BA services, not deferred until the member is ready to discharge"* (QRG §8). Y el criterio explícito, que es exactamente la lógica de `PLACEHOLDER_TBD_CONVENTION` aplicada al alta:
+
+> ***"Discharge criteria should be objective and individualized, not vague. 'When clinically appropriate' is not a discharge criterion."***
+
+El ejemplo que dan es cuantitativo: *0 instancias de agresión durante 6 meses, cuando el nivel actual es 50 instancias/día*.
+
+**5.3.4 Resto de bloques nuevos:**
+
+- **Referral del PCP** firmado, de un PCP calificado para evaluar y diagnosticar, y que **especifique servicios ABA** (QRG §3)
+- **Coordinación de cuidado**: listar todos los servicios y proveedores actuales y describir *"how BA services complement rather than duplicate other services"* (QRG §7)
+- **Horas vs. disponibilidad real**: *"hours requested cannot exceed hours the member is actually available"*; si exceden, exige rationale escrito, plan de coordinación y evidencia de intentos de acomodar el horario (QRG §5)
+- **IEP**: tabla de cuatro situaciones (existe e incluye BA · existe sin BA · 504 en su lugar · la escuela no hace ninguno · no matriculado), cada una con documentación distinta (QRG §7). Más granular que nuestra regla actual
+- **Contenido obligatorio de FBA**: consentimiento informado y rationale · metodología **directa e indirecta** · definiciones operacionales con datos del miembro de frecuencia, tasa, duración e intensidad (*"The function alone is not an assessment"*) · funciones hipotetizadas con antecedentes y consecuencias · reemplazos funcionalmente equivalentes (QRG §4C)
+- **Contenido obligatorio de BIP**: consentimiento informado · **fecha de inicio y de todas las revisiones** · individualizado al miembro, al implementador y al entorno · **capacidad del stakeholder de implementarlo** · reemplazos en la sección de adquisición. *"must be updated as often as necessary… not just at reassessment"*
+- **Suficiencia de metas frente a unidades**: *"there should be enough goals considering the intensity of behaviors and the requested units"* (checklist)
+- **Telehealth**: limitado a entrenamiento a cuidadores, coaching, supervisión y componentes indirectos; *"not used solely for convenience, access, geographic distance, or provider preference"* (MCP 482)
+- **Notas de sesión**: fecha, hora, lugar y duración · conductas maladaptativas **anotadas explícitamente aunque no hayan ocurrido** · respuesta del miembro individualizada · modificaciones de protocolo · **presencia del padre, con razón documentada si está ausente** · participantes. *"Session notes that are templated, copied forward, or missing individualized clinical detail do not meet documentation requirements"* (QRG §6)
+- **97151 NO requiere autorización previa**; 97153, 97154, 97155 y 97156 sí (QRG §9)
+
+### 5.4 Una tensión que hay que acotar
+
+**R14** (`CASP_NOT_DSM_CHECKLIST`) marca como problema que las metas copien criterios DSM verbatim. Molina, en cambio, **exige** que el CDE mapee el diagnóstico a criterios DSM-5 con ejemplos del niño.
+
+No es contradicción —son documentos distintos— pero si se audita un paquete que incluye el CDE, R14 produciría un falso positivo sobre él. **Acción: acotar R14 al plan de tratamiento, excluyendo secciones de evaluación diagnóstica.**
+
+### 5.5 Nota para el modo apelación
+
+Molina restringe el peer-to-peer de forma que afecta a `APPEAL_LEVELS`:
+
+- Solo entre el **clínico tratante** y un Medical Director. *"They are not intended for CEOs, business owners, UM staff, or other non-treating representatives"*
+- *"They may not be recorded or transcribed, including by AI tools"*
+- Molina hace **reconsideración o peer review, no ambas**
+- **Una vez presentada la apelación, ya no se puede pedir P2P** sobre ese caso
+
+### 5.6 Filas propuestas para `AUDIT_REQUIREMENTS`
+
+Ninguna implementada. Todas con `verificacion:'primaria'` — texto primario leído.
+
+| id propuesto | Requisito | Severidad sugerida |
+|---|---|---|
+| `MOL_CDE_REQUIRED` | CDE con los 8 elementos, por practicante de la lista calificada | blocker |
+| `MOL_CDE_VS_BEHAVIOR_ASSESSMENT` | El CDE no satisface el behavior assessment; ambos requeridos | blocker |
+| `MOL_PCP_REFERRAL` | Referral firmado del PCP que especifique ABA | blocker |
+| `MOL_PLAN_60_DAYS` | Plan escrito o actualizado dentro de 60 días del envío | blocker |
+| `MOL_REAUTH_WINDOW` | Envío entre 30 y 10 días antes del vencimiento; reauth ≤180 días | warning |
+| `MOL_DX_ASSESSMENT_24M` | Evaluación diagnóstica >24 meses exige actualización documentada | warning |
+| `MOL_PLAN_COVERS_PERIOD` | El behavior plan cubre todo el período solicitado (hasta 6 meses) | blocker |
+| `MOL_TRANSITION_AT_INIT` | Plan de transición establecido en la iniciación, no diferido | blocker |
+| `MOL_DISCHARGE_OBJECTIVE` | Criterios de alta objetivos; "when clinically appropriate" no es criterio | blocker |
+| `MOL_HIGH_INTENSITY_25H` | >25 h directas/sem dispara cinco requisitos documentales | blocker |
+| `MOL_FBA_CONTENT` | Contenido obligatorio del FBA, con datos del miembro | blocker |
+| `MOL_BIP_CONTENT` | Contenido obligatorio del BIP, con fechas de revisión | blocker |
+| `MOL_DATA_TABLE_GRAPH` | Tabla y gráfico por conducta (refuerza R4 con fuente de pagador) | blocker |
+| `MOL_CARE_COORDINATION` | Servicios listados + cómo BA complementa sin duplicar | warning |
+| `MOL_HOURS_VS_AVAILABILITY` | Horas solicitadas ≤ disponibilidad documentada del miembro | warning |
+| `MOL_GOALS_VS_UNITS` | Metas suficientes frente a las unidades solicitadas | warning |
+| `MOL_IEP_SITUATIONS` | Documentación de IEP/504 según las cuatro situaciones | warning |
+| `MOL_TELEHEALTH_SCOPE` | Telehealth solo indirecto; nunca por conveniencia | warning |
+| `MOL_SESSION_NOTES` | Elementos de nota de sesión; no plantillas | warning |
+| `MOL_97151_NO_PA` | 97151 no requiere autorización previa; el resto sí | n/a (informativo) |
+
+### 5.7 Orden recomendado
+
+1. **✅ IMPLEMENTADO — Sustituir el pagador codificado a mano.** "Sunshine Health" estaba escrito en seis lugares, incluidos dos prompts de IA. Ver `PAYER`.
+2. **✅ IMPLEMENTADO — Bloque de fechas** (5.3.2) como `scanPayerDates`, seis reglas, categoría `payer_timelines`. **Solo compara fechas internas del documento**, nunca contra la fecha de la auditoría: los analistas envían el paquete antes de auditarlo, así que el reloj de hoy sobreestima la edad al enviar. Ver `CONTEXTO_AUDITOR_Claude_Code.md` §1.2
+3. **✅ IMPLEMENTADO — CDE como documento separado** (5.3.1) como `scanCdeSeparate`, ocho reglas, categoría `cde_requirement`. Distingue lo **concluyente** (el documento declara que el CDE cubre el requisito del behavior assessment, o apoya el FBA en el Vineland/BASC → `blocker`) de lo **no concluyente** (el documento no menciona la procedencia del diagnóstico → `warning` que pide verificar, porque el auditor ve un solo archivo y no el paquete). No audita el contenido del CDE: ese documento no es el que se sube. Ver `CONTEXTO_AUDITOR_Claude_Code.md` §1.3
+4. **✅ IMPLEMENTADO — Criterios de alta objetivos** (5.3.3) como `scanDischargeCriteria`, seis reglas, categoría `discharge_criteria`. El parentesco con TBD se confirmó: es el mismo defecto —el campo existe y su contenido no compromete a nada— salvo que el placeholder es una **fórmula clínica vaga** en vez de la cadena `TBD`. Las cuatro reglas de objetividad son **excluyentes**: un solo hallazgo, el que mejor describa el caso. No reporta la ausencia de la sección (ya lo hacen `SEC_TRANSITION` y `dischargePlan`) ni reclama los cinco criterios de AHCA, que copiados son un hallazgo y no un requisito. Ver `CONTEXTO_AUDITOR_Claude_Code.md` §1.4
+5. **✅ RESUELTO — R9 se queda como está, por decisión de Rolando.** Nada de umbrales: *"en el caso de las horas sería mencionar solo si hay incongruencias claras entre las horas solicitadas en el plan; por lo general se piden 30 horas y el seguro las acepta o las reduce. Pero a veces pasa que en una sección se piden una cantidad de horas y en otra del mismo plan aparecen otras."* Cuántas horas pedir lo negocia el analista con el seguro y no es asunto del auditor. Lo que sí es un defecto del documento es la **incongruencia interna**, implementada como `scanHoursConsistency` (tres reglas, categoría `internal_contradiction`, alerta sin juicio). No se añadió la regla de 25 h directas ni el blocker de 97153 > 40. Ver `CONTEXTO_AUDITOR_Claude_Code.md` §1.5
+6. **Acotar R14** (5.4) antes de auditar paquetes que incluyan el CDE — **la tensión se comprobó al implementar el punto 3 y no se materializa** sobre el assessment: R14 no salta por enunciar el nivel de severidad del DSM-5 (verificado en `cde_browser.js`). Sigue pendiente solo para el día en que se audite el texto del CDE mismo, que sí mapea criterios.
+
+---
+
+## 6. Literatura secundaria — **[V]**
 
 **El emparejamiento función ↔ intervención es el predictor de calidad.** En estudios de adecuación técnica de FBA/BIP escolares, los planes reales puntúan solo **40–50 %** de los componentes esperados, con asociaciones fuertes entre la calidad global y (a) la función identificada y (b) si las estrategias estaban emparejadas con ella. Instrumentos formales: TATE, lista de 11 ítems de Van Acker, instrumento de 31 indicadores en 8 dimensiones.
 
@@ -164,7 +308,7 @@ Vinculantes por incorporación (ver §1).
 
 ---
 
-## 6. Brechas del auditor
+## 7. Brechas del auditor
 
 | # | Requisito | Fuente | Hoy | Brecha |
 |---|---|---|---|---|
@@ -194,7 +338,7 @@ Vinculantes por incorporación (ver §1).
 
 ---
 
-## 7. Recomendaciones, por prioridad
+## 8. Recomendaciones, por prioridad
 
 ### Bloque A — riesgo de denegación de reclamación (hacer primero)
 
@@ -246,7 +390,7 @@ Todas citan Florida Medicaid, texto verificado.
 
 ---
 
-## 8. Qué falta conseguir
+## 9. Qué falta conseguir
 
 Con los dos PDF aportados, el bloque vinculante está cubierto. Quedan:
 
@@ -255,7 +399,7 @@ Con los dos PDF aportados, el bloque vinculante está cubierto. Quedan:
 
 ---
 
-## 9. Fuentes
+## 10. Fuentes
 
 **Primarias, leídas en esta sesión:**
 
@@ -267,6 +411,14 @@ Con los dos PDF aportados, el bloque vinculante está cubierto. Quedan:
 - Council of Autism Service Providers (s.f.). *Evidence About ABA Treatment for Young Children with Autism: The Impact of Treatment Intensity on Outcomes.* 46 pp. — **Define la intensidad como horas directas al paciente, excluyendo manejo de caso, entrenamiento a cuidadores, evaluación de datos y supervisión de protocolos** (p. 11). Rangos verificados: comprehensivo de alta intensidad **30–40 h/sem durante al menos dos años**; focalizado de alcance estrecho **6–15 h/sem**; focalizado sobre conducta desafiante grave **25–40 h/sem**; comprehensivo de baja intensidad, apropiado "en pocos casos" (típicamente mantenimiento). **Sustituye los rangos no verificados de §5 y motivó la recalibración de R9 a `warning`.** Habilita además una regla de **coherencia alcance ↔ intensidad**, mejor que "horas fuera de rango".
 - Council of Autism Service Providers & Association of Professional Behavior Analysts (s.f.). *Practice Parameters for Artificial Intelligence Use in Applied Behavior Analysis.* 25 pp. — **Gobierna al auditor mismo, no a los documentos que audita.** Exige transparencia (explicabilidad e interpretabilidad), trazabilidad de errores hasta su origen, revelar **el alcance** del uso de IA y **ofrecer alternativas sin IA como opt-out**, monitoreo de deriva con responsable y umbrales definidos, auditoría periódica, y un canal estructurado de reporte de errores. Advierte que los pagadores pueden no permitir ni reembolsar todo uso de IA. Resume el invariante del proyecto: *"AI should serve as a tool to support clinical work, not supplant it."*
 - Council of Autism Service Providers et al. (2021). *The Health Insurance Appeals Guide: A Consumer Guide for Filing Autism Appeals.* 79 pp. — Guía de consumidor, no estándar de práctica ni específica de Florida: **menor valor para generar reglas**. Clasifica las denegaciones en administrativas, de cobertura y clínicas. Su aporte es de encuadre: el assessment es la prueba en una apelación futura, lo que sugiere reforzar el resumen ejecutivo y la declaración del consultor antes que añadir blockers. **✅ IMPLEMENTADO como modo apelación** (`generateAppealLetter`, §5.1 del contexto): la taxonomía de denegaciones ramifica la estrategia del prompt, y de "el assessment es la prueba" sale `appealPreflight`, que antes de redactar avisa qué blockers abiertos tiene el documento sobre el que se va a apelar. No añadió ninguna regla de auditoría, según lo previsto.
+
+**Molina Healthcare — capa de pagador, leídas en esta sesión (aportadas por Rolando):**
+
+- Molina Healthcare of Florida (julio 2026). *Behavioral Analysis Services: Authorization & Documentation Guide — Comprehensive Provider Quick Reference Guide*, v1.0, 20 pp. Declara estar basada en la AHCA BA Services Coverage Policy (diciembre 2024). **Documento operativo principal**: CDE, snags comunes, checklists por tipo de solicitud, behavior assessment, intensidad, notas de sesión, coordinación, alta, facturación, P2P.
+- Molina Healthcare (aprob. 06/10/2026). *Molina Clinical Policy No. 482 — Applied Behavioral Analysis for Autism Spectrum Disorder*, 11 pp. Criterios de necesidad médica para iniciación, continuación y alta. **Fija el disparador de alta intensidad en 25 horas DIRECTAS por semana**, lo que resuelve la disputa de métrica que motivó bajar R9 a `warning`.
+- Molina Healthcare (s.f.). *Applied Behavior Analysis (ABA) documentation requirements for initial and continued treatment plans*, 2 pp. Checklist. Fuente de la regla de **60 días** y de la suficiencia de metas frente a unidades.
+- Molina Healthcare (rev. 02/05/2026). *Behavior Analysis (BA) Quick Reference Guide 2026*, 4 pp. Facturación, regla de 8 minutos, supervisión, contactos.
+- Molina Healthcare (2024). *Marketplace National Regional Benefit Interpretation Document — Autism Spectrum Disorder*, 15 estados. **No es Medicaid**: aplica a planes comerciales. Aporte marginal.
 
 **Secundarias, vía búsqueda:**
 

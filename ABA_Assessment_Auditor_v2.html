@@ -559,6 +559,25 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit}
 
 <script>
 /* ============================================================
+   PAGADOR ACTIVO
+   ============================================================
+   El nombre del pagador estaba escrito a mano en seis lugares, dos de ellos
+   prompts de IA. Al cambiar de aseguradora eso produce salidas dirigidas al
+   pagador equivocado, en silencio. Aqui vive una sola vez.
+
+   `nombre` es el nombre legal que va en prosa y en los prompts; `corto` es
+   para etiquetas de interfaz. Cambiar de pagador es editar estas dos lineas.
+
+   Molina Healthcare of Florida es el pagador vigente desde julio 2026. Su
+   guia de autorizacion se declara basada en la AHCA BA Services Coverage
+   Policy (diciembre 2024), de modo que las reglas de Florida NO se sustituyen:
+   la capa de pagador se suma. Ver FUNDAMENTO_LITERATURA.md, seccion 5. */
+const PAYER={
+  nombre:'Molina Healthcare of Florida',
+  corto:'Molina'
+};
+
+/* ============================================================
    STORAGE LAYER (localStorage)
    ============================================================ */
 const LS = {
@@ -1113,8 +1132,8 @@ const CLINICAL_SAFETY_RULES = [
         findings.push({
           ruleId:'SUPERVISION_10PCT',severity:'warning',category:'regulatory_compliance',
           description:'The supervision plan does not explicitly state the minimum 10% supervision requirement. BACB guidelines and Florida Medicaid require that the supervising BCBA provides a minimum of 10% of the RBT’s total direct service hours per month.',
-          suggestedAction:'Add explicit statement: "The supervising BCBA will provide a minimum of 10% supervision per month of the total direct service hours delivered by the RBT, per BACB guidelines and Sunshine Health requirements."',
-          suggestedRewrite:'The supervising BCBA will provide a minimum of 10% supervision per month of the total direct service hours delivered by the RBT, in accordance with BACB guidelines and Sunshine Health authorization requirements.',
+          suggestedAction:'Add explicit statement: "The supervising BCBA will provide a minimum of 10% supervision per month of the total direct service hours delivered by the RBT, per BACB guidelines."',
+          suggestedRewrite:'The supervising BCBA will provide a minimum of 10% supervision per month of the total direct service hours delivered by the RBT, in accordance with BACB guidelines.',
           status:'open',createdAt:Date.now()
         });
       }
@@ -1781,6 +1800,9 @@ async function runAudit(){
     findings=findings.concat(scanAdminRequiredElements(text,state.currentDoc.docType));
     findings=findings.concat(scanProceduralFidelity(text,state.currentDoc.docType));
     findings=findings.concat(scanAssessmentDomains(text,state.currentDoc.docType));
+    findings=findings.concat(scanPayerDates(text,state.currentDoc.docType));
+    findings=findings.concat(scanCdeSeparate(text,state.currentDoc.docType));
+    findings=findings.concat(scanDischargeCriteria(text,state.currentDoc.docType));
     findings=findings.concat(scanGoalsNotDsmCriteria(text,state.currentDoc.docType));
     findings=findings.concat(scanClientAssent(text,state.currentDoc.docType));
     findings=findings.concat(scanGoalAssessmentLink(text,state.currentDoc.docType));
@@ -1832,6 +1854,11 @@ async function runAudit(){
       // FL Medicaid 4.2.2: techos de cobertura. La suma de horas usa el
       // canonico, por eso corre aqui y no con las demas reglas deterministas.
       findings=findings.concat(scanFloridaServiceLimits(text,state.currentDoc.canonical));
+
+      // Coherencia interna de las horas. NO juzga cuantas se piden: eso lo
+      // negocia el analista con el seguro. Solo compara cifras que ambas
+      // digan ser la misma magnitud. Usa el canonico, por eso corre aqui.
+      findings=findings.concat(scanHoursConsistency(text,state.currentDoc.canonical,state.currentDoc.docType));
 
       // FL Medicaid 6.2.2: elementos requeridos por meta. El canonico solo
       // enriquece la descripcion con el numero de metas.
@@ -2653,7 +2680,7 @@ const AUDIT_REQUIREMENTS=[
   {id:'FL_4_2_2_LIMITS', fuente:'Florida Medicaid BA Services Coverage Policy', edicion:'diciembre 2024', seccion:'4.2.2', verificacion:'primaria', severidad:'blocker/warning',
    requisito:'Hasta 40 horas semanales de servicios de intervencion BA; tamano maximo de grupo de seis participantes; adaptive behavior treatment with protocol modification y family adaptive behavior treatment guidance solo por Lead Analyst o BCaBA.',
    reglas:['FL_LIMIT_WEEKLY_HOURS','FL_LIMIT_WEEKLY_HOURS_TOTAL','FL_LIMIT_GROUP_SIZE','FL_LIMIT_PROTOCOL_MOD_PROVIDER','FL_LIMIT_FAMILY_GUIDANCE_PROVIDER'],
-   nota:'Las reglas de horas son warning y no blocker: la metrica de intensidad esta en disputa entre CASP y el pagador. Ver CASP_INTENSITY_METRIC.'},
+   nota:'Las reglas de horas son warning y no blocker, por decision de Rolando: el auditor no juzga cuantas horas pedir, eso lo negocia el analista con el seguro. Lo que si audita es la coherencia interna (scanHoursConsistency). Sobre la metrica: Molina la zanjo a favor de CASP -- MCP 482 criterio 5 dice "25 direct hours per week", con la palabra direct -- pero NO zanjo el techo: el 40 de AHCA sigue siendo un total de lineas de intervencion, de modo que en Florida corren los dos medidores a la vez. Ver CASP_INTENSITY_METRIC.'},
   {id:'FL_4_2_2_PARENT', fuente:'Florida Medicaid BA Services Coverage Policy', edicion:'diciembre 2024', seccion:'4.2.2', verificacion:'primaria', severidad:'blocker',
    requisito:'El proveedor debe hacer todo esfuerzo por acomodar la participacion parental y documentarlo en las actualizaciones del plan. Si no es posible, deben documentarse las razones, los impactos potenciales y como se mitigan.',
    reglas:['FL_PARENT_NONPARTICIPATION_DOC','FL_PARENT_ACCOMMODATION_EFFORTS']},
@@ -2715,6 +2742,45 @@ const AUDIT_REQUIREMENTS=[
    reglas:['(herramienta: AUDITOR_RULES_VERSION, summarizeAiScope, reportFindingError)']},
 
   // ── NO VERIFICADO contra texto primario en este proyecto ─────────────────
+  // -- Molina Healthcare, capa de pagador (julio 2026) --------------------
+  // Su guia de Florida se declara basada en la AHCA BA Services Coverage Policy
+  // (diciembre 2024): NO sustituye a Florida, se suma. Ver FUNDAMENTO §5.
+  {id:'MOL_PLAN_DATE_60D', fuente:'Molina Healthcare, ABA documentation requirements', edicion:'julio 2026', seccion:'Initial treatment plan', verificacion:'primaria', severidad:'blocker/warning',
+   requisito:'El plan debe haberse escrito o actualizado dentro de los 60 dias previos al envio para reautorizacion, y la fecha de redaccion debe constar en el documento.',
+   reglas:['MOL_PLAN_DATE_MISSING','MOL_PLAN_AGE_60D'],
+   nota:'Solo se evalua si el documento declara TAMBIEN la fecha de envio. No se mide contra la fecha de la auditoria: en esta consulta el paquete se manda al seguro antes de auditarlo, de modo que la edad medida hoy sobreestima la edad al enviar y produciria blockers falsos.'},
+  {id:'MOL_REAUTH_WINDOW', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'Coverage & Prior Authorization Basics', verificacion:'primaria', severidad:'warning',
+   requisito:'Reautorizacion al menos cada 180 dias. El envio se acepta desde 30 dias antes del vencimiento y no mas tarde de 10 dias antes.',
+   reglas:['MOL_REAUTH_WINDOW']},
+  {id:'MOL_DX_ASSESSMENT_24M', fuente:'Molina Clinical Policy No. 482', edicion:'06/10/2026', seccion:'1.g.ii', verificacion:'primaria', severidad:'warning',
+   requisito:'Si la evaluacion diagnostica estandarizada tiene mas de 24 meses, debe acompanarse de documentacion actualizada que describa los sintomas de ASD y el impacto funcional actuales.',
+   reglas:['MOL_DX_ASSESSMENT_24M'],
+   nota:'El CDE no caduca para miembros de Medicaid; lo que se exige es la actualizacion, no una evaluacion nueva.'},
+  {id:'MOL_REASSESS_INTERVAL', fuente:'Molina Clinical Policy No. 482', edicion:'06/10/2026', seccion:'4.l', verificacion:'primaria', severidad:'warning',
+   requisito:'Las reevaluaciones deben ocurrir al menos cada 6 meses.',
+   reglas:['MOL_REASSESS_INTERVAL']},
+  {id:'MOL_PLAN_COVERS_PERIOD', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'2 y 3', verificacion:'primaria', severidad:'blocker',
+   requisito:'El behavior plan debe cubrir todo el periodo de autorizacion solicitado, hasta seis meses.',
+   reglas:['MOL_PLAN_COVERS_PERIOD']},
+  {id:'MOL_CDE_REQUIRED', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'secc. 1, Who Can Perform a CDE / Required Elements', verificacion:'primaria', severidad:'warning',
+   requisito:'Toda autorizacion inicial exige una evaluacion diagnostica integral (CDE) hecha por un profesional de una lista cerrada (PCP de familia, medicina interna o pediatria; medico de pediatria del desarrollo y del comportamiento, neurodesarrollo, neurologia pediatrica o psiquiatria; psicologo infantil PhD o PsyD; psicologo escolar LICENCIADO -el no licenciado no puede hacerla-; o equipo multidisciplinario dirigido por uno de ellos). El diagnostico debe enunciarlo el profesional evaluador de forma explicita: la puntuacion de un instrumento de cribado como el CARS o el ADOS no constituye un diagnostico formal, y las cartas escolares de acomodaciones por si solas no bastan.',
+   reglas:['MOL_CDE_NOT_REFERENCED','MOL_CDE_DX_FROM_TOOL','MOL_CDE_PRACTITIONER_UNCLEAR','MOL_CDE_SCHOOL_LETTER'],
+   nota:'El auditor ve un solo documento, no el paquete: por eso estas reglas piden verificar y no bloquean. Solo se comprueba lo que el behavior assessment dice sobre la procedencia del diagnostico, nunca el contenido del CDE, que es otro archivo.'},
+  {id:'MOL_CDE_VS_BEHAVIOR_ASSESSMENT', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'secc. 1, CDE vs. Behavior Assessment', verificacion:'primaria', severidad:'blocker',
+   requisito:'El CDE y el behavior assessment son dos requisitos SEPARADOS. Un CDE, incluso uno que contenga puntuaciones Vineland-3 o BASC-3 dentro de la evaluacion diagnostica, no satisface el requisito de AHCA de un behavior assessment enviado con la solicitud: hacen falta los informes de puntuacion completos de Vineland-3 y BASC-3 PRQ administrados y puntuados por el proveedor de BA. Ambos documentos se exigen; uno no reemplaza al otro. Estos instrumentos nunca se usan para construir el FBA ni el BIP.',
+   reglas:['MOL_CDE_SUBSTITUTION','MOL_VINELAND_NOT_FBA']},
+  {id:'MOL_CDE_SEVERITY_CONTEXT', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'secc. 1 y 2, What Distinguishes a Thorough CDE / CDE-Related Snags', verificacion:'primaria', severidad:'warning',
+   requisito:'Entre las causas frecuentes de devolucion estan no especificar el nivel de severidad del DSM-5 para el TEA (nivel 1, 2 o 3) con los apoyos que requiere, porque su ausencia deja sin fundamento diagnostico la intensidad solicitada, y describir el deterioro funcional en un solo entorno o en ninguno: un diagnostico sin deterioro funcional documentado no establece por si solo la necesidad de servicios intensivos.',
+   reglas:['MOL_DSM5_SEVERITY_MISSING','MOL_IMPAIRMENT_ONE_SETTING'],
+   nota:'Salen de la lista de causas de devolucion, no de la de elementos obligatorios: por eso warning y notice, nunca blocker.'},
+  {id:'MOL_DISCHARGE_OBJECTIVE', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'secc. 8, Transition Planning & Discharge Criteria', verificacion:'primaria', severidad:'blocker/warning',
+   requisito:'El plan de transicion y alta debe establecerse AL INICIO de los servicios, no aplazarse hasta que el miembro este listo para el alta, y revisarse y actualizarse a lo largo del tratamiento. Los criterios de alta deben ser objetivos e individualizados, no vagos: "When clinically appropriate is not a discharge criterion". Deben individualizarse al miembro y a sus habilidades actuales, con criterios realistas para un nivel de apoyo menor (el ejemplo de la propia guia: 0 instancias de agresion durante 6 meses cuando el nivel actual es de 50 al dia).',
+   reglas:['MOL_DISCHARGE_DEFERRED','MOL_DISCHARGE_VAGUE','MOL_DISCHARGE_POLICY_BOILERPLATE','MOL_DISCHARGE_NOT_OBJECTIVE'],
+   nota:'Las cuatro reglas son excluyentes por diseno: un solo hallazgo para "los criterios no son objetivos", el que mejor describa el caso. La AUSENCIA de la seccion no se reporta aqui, ya la cubren SEC_TRANSITION y dischargePlan. Los cinco criterios de alta que la guia reproduce son los del pagador para cuando el alta procede, NO una lista que el plan deba copiar: copiarla es lo contrario de individualizar, de ahi MOL_DISCHARGE_POLICY_BOILERPLATE.'},
+  {id:'MOL_TRANSITION_PLAN_CONTENT', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'secc. 8, What a Strong Transition Plan Includes; secc. 5; checklist Transition Plan Update', verificacion:'primaria', severidad:'warning',
+   requisito:'El plan de transicion debe detallar como se proyecta reducir las horas a medida que se alcanzan las metas de transicion, con metas SMART de las habilidades necesarias para un nivel de cuidado menor, progreso documentado en cada reevaluacion, recursos comunitarios para mantener las ganancias tras el alta y mayor frecuencia de entrenamiento a cuidadores al acercarse a los criterios. Para miembros en edad escolar cuyo ABA a tiempo completo impide la asistencia, un plan documentado de traspaso a un entorno escolar.',
+   reglas:['MOL_TRANSITION_NO_TITRATION','MOL_DISCHARGE_SCHOOL_TRANSITION'],
+   nota:'La titracion de horas se exige en tres lugares distintos de la guia, senal de que falta a menudo.'},
   {id:'CPT_UNIT_MATH', fuente:'Convencion del consultorio y fee schedule de Florida', edicion:'-', seccion:'-', verificacion:'convencion', severidad:'blocker',
    requisito:'Unidades = horas por semana x 4 unidades por hora x 26 semanas para un periodo de autorizacion de seis meses.',
    reglas:['CPT_UNITS_MATH'],
@@ -3924,6 +3990,935 @@ async function scanProgressDataPerBehavior(docObj,canonical){
 // ONLY (no rewrite: category 'internal_contradiction' is excluded from
 // enrichment and bulk-approve). Ages are filtered to a plausible pediatric
 // client range (1–21) so caregiver ages don't create false inconsistencies.
+/* ===== Bloque de fechas del pagador (Molina, vigente julio 2026) ===========
+
+   Cinco requisitos de Molina son puramente temporales: no hacen falta pasadas
+   de IA, son fechas y aritmetica. Ver FUNDAMENTO_LITERATURA.md, seccion 5.3.2.
+
+   EL PRINCIPIO QUE SOSTIENE TODO EL BLOQUE:
+   SOLO SE COMPARAN FECHAS QUE ESTEN AMBAS DENTRO DEL DOCUMENTO.
+   Nunca se compara contra la fecha de la auditoria.
+
+   Por que. El primer diseno media la edad del plan contra HOY, razonando que
+   el envio ocurre hoy o despues y que por tanto la edad de hoy es una cota
+   inferior de la edad al enviar. En el flujo real de esta consulta eso es
+   falso, y falso en la direccion peligrosa: los analistas mandan el paquete
+   al seguro PRIMERO y lo pasan por el auditor DESPUES. El envio ya ocurrio,
+   en el pasado. La edad medida hoy es entonces una SOBREestimacion: un plan
+   con 70 dias hoy pudo tener 30 cuando se envio, y estaba en regla. Medir
+   contra hoy produciria blockers falsos contra planes correctos.
+
+   Comparar fechas internas del documento no tiene ese problema, y ademas
+   hace las reglas REPRODUCIBLES: auditar el mismo documento dentro de un ano
+   da exactamente los mismos hallazgos. Una regla anclada en "hoy" haria que
+   una auditoria archivada cambiara de significado con el tiempo, justo lo
+   contrario de la trazabilidad que exigen las Practice Parameters de IA.
+
+   Consecuencia aceptada: cuando el documento no trae la segunda fecha, la
+   regla CALLA. Es preferible el silencio a una afirmacion que no se puede
+   sostener. La regla de los 60 dias, en particular, solo se puede evaluar si
+   el documento declara la fecha de envio o de solicitud.
+
+   AMBIGUEDAD DE FORMATO. 03/04/2026 es el 3 de abril o el 4 de marzo segun el
+   pais. Se asume EE. UU. (MM/DD), pero cuando ambos componentes son <=12 la
+   fecha queda marcada como ambigua y la regla solo emite `blocker` si la
+   conclusion se sostiene bajo TODAS las lecturas posibles. Si solo se sostiene
+   bajo alguna, baja de severidad y lo dice. Nunca se bloquea por adivinar el
+   formato.                                                                  */
+
+const MOL_PLAN_MAX_AGE_DAYS=60;       // plan escrito/actualizado dentro de 60 dias del envio
+const MOL_REAUTH_EARLIEST_DAYS=30;    // se puede enviar hasta 30 dias antes del vencimiento
+const MOL_REAUTH_LATEST_DAYS=10;      // y no mas tarde de 10 dias antes
+const MOL_DX_STALE_MONTHS=24;         // evaluacion diagnostica estandarizada > 24 meses
+const MOL_REASSESS_MAX_DAYS=186;      // reevaluacion al menos cada 6 meses (6 x 31)
+
+const MOL_MONTHS={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+
+// Construye una fecha solo si el dia existe de verdad en ese mes (rechaza
+// 02/31) y si el ano es plausible para un expediente clinico. El rango evita
+// que numeros de codigo o de pagina se lean como fechas. `nowMs` se usa SOLO
+// para ese limite de cordura, nunca para decidir un hallazgo.
+function _molMakeDate(y,m,d,nowMs){
+  if(!(m>=1&&m<=12)||!(d>=1&&d<=31))return null;
+  const yr=new Date(nowMs||Date.now()).getFullYear();
+  if(y<1990||y>yr+5)return null;
+  const dt=new Date(y,m-1,d);
+  if(dt.getFullYear()!==y||dt.getMonth()!==m-1||dt.getDate()!==d)return null;
+  return dt.getTime();
+}
+
+/* Extrae la PRIMERA fecha de un fragmento. Devuelve {ms, alt, texto}, donde
+   `alt` es la lectura DD/MM cuando el formato numerico es ambiguo y null
+   cuando no lo es. Formatos: M/D/AAAA, M-D-AA, AAAA-MM-DD, "January 5, 2026"
+   y "5 January 2026". */
+function _molParseDate(frag,nowMs){
+  if(!frag)return null;
+  let m=/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/.exec(frag);
+  if(m){
+    const ms=_molMakeDate(+m[1],+m[2],+m[3],nowMs);
+    if(ms!==null)return {ms,alt:null,texto:m[0]};
+  }
+  m=/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/i.exec(frag);
+  if(m){
+    const ms=_molMakeDate(+m[3],MOL_MONTHS[m[1].toLowerCase().slice(0,3)],+m[2],nowMs);
+    if(ms!==null)return {ms,alt:null,texto:m[0]};
+  }
+  m=/\b(\d{1,2})(?:st|nd|rd|th)?\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s+(\d{4})\b/i.exec(frag);
+  if(m){
+    const ms=_molMakeDate(+m[3],MOL_MONTHS[m[2].toLowerCase().slice(0,3)],+m[1],nowMs);
+    if(ms!==null)return {ms,alt:null,texto:m[0]};
+  }
+  m=/\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})\b/.exec(frag);
+  if(m){
+    let y=+m[3];
+    if(m[3].length===2)y=y<70?2000+y:1900+y;
+    const a=+m[1],b=+m[2];
+    const usa=_molMakeDate(y,a,b,nowMs);          // MM/DD (EE. UU.)
+    const eur=_molMakeDate(y,b,a,nowMs);          // DD/MM
+    if(usa!==null)return {ms:usa, alt:(eur!==null&&eur!==usa)?eur:null, texto:m[0]};
+    if(eur!==null)return {ms:eur, alt:null, texto:m[0]};   // el primero >12: sin ambiguedad
+  }
+  return null;
+}
+
+/* Busca una etiqueta y toma la fecha que viene DESPUES, dentro de la misma
+   linea o celda. El corte en el salto de linea es la leccion de
+   classifyTbdContext: sin el, "Date of plan:" se lleva la fecha de nacimiento
+   del renglon siguiente. */
+function _molLabeledDate(text,labelRe,nowMs){
+  if(!text)return null;
+  const re=new RegExp(labelRe.source,labelRe.flags.replace('g','')+'g');
+  let m;
+  while((m=re.exec(text))!==null){
+    // El \s* final de la etiqueta puede haberse tragado el salto de linea. Si
+    // se rebanara desde ahi, el corte por renglon no encontraria nada y la
+    // etiqueta se llevaria la fecha del campo siguiente ("Date of plan:" ->
+    // fecha de nacimiento). Se devuelve ese espacio al fragmento.
+    const fin=m.index+m[0].replace(/\s+$/,'').length;
+    let seg=text.slice(fin, fin+60);
+    const cut=seg.search(/[\n\r]|(?:\.\s)|\t|\|/);
+    if(cut!==-1)seg=seg.slice(0,cut);
+    const d=_molParseDate(seg,nowMs);
+    if(d)return {...d, etiqueta:m[0].trim(), index:m.index};
+  }
+  return null;
+}
+
+/* Rango de fechas tras una etiqueta: "01/15/2026 - 07/14/2026", "… to …",
+   "… through …". Devuelve {inicio,fin,texto} o null. */
+function _molLabeledRange(text,labelRe,nowMs){
+  if(!text)return null;
+  const re=new RegExp(labelRe.source,labelRe.flags.replace('g','')+'g');
+  let m;
+  while((m=re.exec(text))!==null){
+    const fin=m.index+m[0].replace(/\s+$/,'').length;   // mismo motivo que arriba
+    let seg=text.slice(fin, fin+120);
+    const cut=seg.search(/[\n\r]|\t|\|/);
+    if(cut!==-1)seg=seg.slice(0,cut);
+    const a=_molParseDate(seg,nowMs);
+    if(!a)continue;
+    const after=seg.slice(seg.indexOf(a.texto)+a.texto.length);
+    if(!/^\s*(?:-|–|—|to|through|hasta|al)\s*/i.test(after))continue;
+    const b=_molParseDate(after,nowMs);
+    if(b&&b.ms>a.ms)return {inicio:a.ms, fin:b.ms, texto:a.texto+' – '+b.texto, index:m.index};
+  }
+  return null;
+}
+
+const MOL_DAY=86400000;
+function _molDays(fromMs,toMs){ return Math.floor((toMs-fromMs)/MOL_DAY); }
+
+/* Diferencia en dias entre dos fechas extraidas, considerando TODAS las
+   lecturas posibles cuando alguna es ambigua. Devuelve {base, todas, ambigua}:
+   `base` es la diferencia bajo la lectura de EE. UU.; `todas` es true cuando el
+   umbral se supera bajo cualquier combinacion, que es lo que permite bloquear. */
+function _molGap(desde,hasta,umbralDias){
+  const A=[desde.ms].concat(desde.alt!==null?[desde.alt]:[]);
+  const B=[hasta.ms].concat(hasta.alt!==null?[hasta.alt]:[]);
+  const difs=[];
+  for(const a of A)for(const b of B)difs.push(_molDays(a,b));
+  const base=_molDays(desde.ms,hasta.ms);
+  return {
+    base,
+    supera:base>umbralDias,          // dispara SOLO la lectura de EE. UU.
+    todas:difs.every(d=>d>umbralDias), // y solo bloquea si ninguna lectura salva
+    ambigua:desde.alt!==null||hasta.alt!==null
+  };
+}
+
+const MOL_RE_PLAN_DATE=/\b(?:date\s+(?:of\s+)?(?:this\s+)?(?:plan|report|treatment\s+plan)|plan\s+date|report\s+date|date\s+(?:written|prepared|of\s+preparation)|prepared\s+on|fecha\s+(?:de[l]?\s+)?(?:plan|informe|reporte))\b\s*:?\s*/i;
+const MOL_RE_SUBMIT_DATE=/\b(?:date\s+(?:of\s+)?(?:submission|request)|submission\s+date|date\s+submitted|submitted\s+on|request\s+date|date\s+of\s+authorization\s+request|fecha\s+de\s+(?:env[ií]o|solicitud))\b\s*:?\s*/i;
+const MOL_RE_AUTH_PERIOD=/\b(?:authorization\s+period|auth(?:orization)?\s+dates?|period\s+of\s+authorization|approved\s+(?:for\s+)?period|per[ií]odo\s+de\s+autorizaci[oó]n)\b\s*:?\s*/i;
+const MOL_RE_AUTH_END=/\b(?:authorization\s+end\s+date|auth(?:orization)?\s+(?:expires|expiration|end)|end\s+of\s+authorization|vencimiento\s+de\s+la\s+autorizaci[oó]n)\b\s*:?\s*/i;
+const MOL_RE_PLAN_PERIOD=/\b(?:(?:behavior|treatment|service)\s+plan\s+(?:period|dates?)|plan\s+period|service\s+period|treatment\s+period|per[ií]odo\s+del\s+plan)\b\s*:?\s*/i;
+const MOL_RE_DX_DATE=/\b(?:(?:asd|autism)\s+diagnosis\s+date|date\s+of\s+(?:asd\s+)?diagnosis|diagnosis\s+date|date\s+diagnosed|diagnosed\s+on|comprehensive\s+diagnostic\s+evaluation(?:\s+date)?|fecha\s+de[l]?\s+diagn[oó]stico)\b\s*:?\s*/i;
+const MOL_RE_PREV_ASSESS=/\b(?:(?:previous|prior|last)\s+(?:assessment|reassessment|evaluation|authorization)(?:\s+date)?|date\s+of\s+(?:previous|prior|last)\s+(?:assessment|reassessment|evaluation)|evaluaci[oó]n\s+(?:previa|anterior))\b\s*:?\s*/i;
+
+/* Regla de fechas. `now` existe solo para que el limite de cordura del parser
+   sea determinista en el harness; NINGUN hallazgo depende de el. */
+function scanPayerDates(text,docType,now){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='iep'||docType==='medical_necessity')return findings;
+  const nowMs=now||Date.now();
+  const P=(typeof PAYER!=='undefined'&&PAYER&&PAYER.nombre)?PAYER.nombre:'el pagador';
+  const add=(ruleId,severity,description,suggestedAction,matchedText)=>findings.push({
+    id:uid(),ruleId,severity,category:'payer_timelines',description,suggestedAction,
+    matchedText:matchedText||'',status:'open',createdAt:Date.now()
+  });
+  const amb=g=>g.ambigua?' La fecha es ambigua (MM/DD o DD/MM); se asume el formato de EE. UU.':'';
+  const parcial=g=>(g.ambigua&&!g.todas)?' Bajo la otra lectura de la fecha no se superaría el límite, por eso baja de severidad.':'';
+
+  const plan=_molLabeledDate(text,MOL_RE_PLAN_DATE,nowMs);
+  const envio=_molLabeledDate(text,MOL_RE_SUBMIT_DATE,nowMs);
+  const dx=_molLabeledDate(text,MOL_RE_DX_DATE,nowMs);
+  const rangoAuth=_molLabeledRange(text,MOL_RE_AUTH_PERIOD,nowMs);
+  const finAuthSolo=_molLabeledDate(text,MOL_RE_AUTH_END,nowMs);
+  const finAuth=rangoAuth?{ms:rangoAuth.fin,alt:null,texto:rangoAuth.texto}
+                         :(finAuthSolo?{ms:finAuthSolo.ms,alt:finAuthSolo.alt,texto:finAuthSolo.texto}:null);
+  const rangoPlan=_molLabeledRange(text,MOL_RE_PLAN_PERIOD,nowMs);
+
+  // ---- 1. La fecha del plan debe constar --------------------------------
+  // Esto si es independiente de cualquier reloj: o esta escrita o no esta.
+  // Queda en warning y no en blocker porque la fecha suele ir en encabezado o
+  // pie, y la extraccion de texto del .docx no siempre los recupera: el
+  // auditor no puede distinguir "no esta" de "no lo vi".
+  if(!plan){
+    add('MOL_PLAN_DATE_MISSING','warning',
+      `No se detecta la fecha de redacción del plan. ${P} exige documentar la fecha en que se escribió el plan actual, y las de sus actualizaciones previas. Sin ella no se puede demostrar la regla de los ${MOL_PLAN_MAX_AGE_DAYS} días. Si la fecha está en un encabezado o pie, puede no haberse extraído: verifíquelo en el documento.`,
+      'State the date the current treatment plan was written, and the dates of any previous updates, in the body of the plan.');
+  }
+
+  // ---- 2. 60 dias entre redaccion y envio -------------------------------
+  // Solo se evalua si AMBAS fechas constan en el documento. No se sustituye la
+  // fecha de envio por la de hoy: en esta consulta el paquete se manda antes
+  // de auditarlo, asi que hoy no dice nada sobre cuando se envio.
+  if(plan&&envio){
+    const g=_molGap(plan,envio,MOL_PLAN_MAX_AGE_DAYS);
+    if(g.supera){
+      add('MOL_PLAN_AGE_60D', g.todas?'blocker':'warning',
+        `Entre la fecha del plan (${plan.texto}) y la del envío (${envio.texto}) hay ${g.base} días. ${P} exige que el plan se haya escrito o actualizado dentro de los ${MOL_PLAN_MAX_AGE_DAYS} días previos al envío para reautorización.${amb(g)}${parcial(g)}`,
+        'Update the treatment plan and restate its date so that it falls within 60 days of the reauthorization submission.',
+        plan.texto);
+    }
+  }
+
+  // ---- 3. Ventana de envio: entre 30 y 10 dias antes del vencimiento ----
+  // Igual que arriba: exige que el documento declare la fecha de envio. Sin
+  // ella no hay forma de saber si se respeto la ventana.
+  if(envio&&finAuth){
+    const g=_molGap(envio,finAuth,-99999);           // solo para el desglose de lecturas
+    const restan=_molDays(envio.ms,finAuth.ms);
+    if(restan<MOL_REAUTH_LATEST_DAYS){
+      add('MOL_REAUTH_WINDOW','warning',
+        restan<0
+          ? `El envío (${envio.texto}) es posterior al vencimiento de la autorización (${finAuth.texto}). ${P} no reembolsa servicios prestados sin autorización vigente.${amb(g)}`
+          : `Entre el envío (${envio.texto}) y el vencimiento (${finAuth.texto}) hay ${restan} días. ${P} exige enviar la reautorización a más tardar ${MOL_REAUTH_LATEST_DAYS} días antes del vencimiento.${amb(g)}`,
+        'Submit the reauthorization request no later than 10 days before the authorization end date.',
+        envio.texto);
+    }else if(restan>MOL_REAUTH_EARLIEST_DAYS){
+      add('MOL_REAUTH_WINDOW','notice',
+        `Entre el envío (${envio.texto}) y el vencimiento (${finAuth.texto}) hay ${restan} días. ${P} acepta la reautorización desde ${MOL_REAUTH_EARLIEST_DAYS} días antes del vencimiento.${amb(g)}`,
+        'Submit the reauthorization request no earlier than 30 days before the authorization end date.',
+        envio.texto);
+    }
+  }
+
+  // ---- 4. Evaluacion diagnostica de mas de 24 meses ---------------------
+  // Se mide contra la fecha del PLAN, no contra hoy: asi el hallazgo dice algo
+  // sobre el documento y no sobre cuando se abrio el auditor.
+  if(dx&&plan){
+    const umbral=Math.round(MOL_DX_STALE_MONTHS*30.44);
+    const g=_molGap(dx,plan,umbral);
+    if(g.supera){
+      add('MOL_DX_ASSESSMENT_24M', g.todas?'warning':'notice',
+        `Entre la evaluación diagnóstica (${dx.texto}) y la redacción del plan (${plan.texto}) hay unos ${Math.round(g.base/30.44)} meses. Cuando una evaluación diagnóstica estandarizada supera los ${MOL_DX_STALE_MONTHS} meses, ${P} exige documentación actualizada que describa los síntomas de ASD y el impacto funcional actuales. El CDE en sí no caduca; lo que hace falta es la actualización.${amb(g)}${parcial(g)}`,
+        'Add a current description of ASD symptoms and functional impact; the standardized diagnostic assessment on file is more than 24 months old.',
+        dx.texto);
+    }
+  }
+
+  // ---- 5. Intervalo entre reevaluaciones: 6 meses -----------------------
+  if(docType==='reassessment'&&plan){
+    const prev=_molLabeledDate(text,MOL_RE_PREV_ASSESS,nowMs);
+    if(prev){
+      const g=_molGap(prev,plan,MOL_REASSESS_MAX_DAYS);
+      if(g.supera){
+        add('MOL_REASSESS_INTERVAL', g.todas?'warning':'notice',
+          `Entre la evaluación anterior (${prev.texto}) y este plan (${plan.texto}) han pasado ${g.base} días. ${P} exige que las reevaluaciones ocurran al menos cada 6 meses, y la reautorización al menos cada 180 días.${amb(g)}${parcial(g)}`,
+          'Document the reassessment interval; reassessments must occur at least every six months.',
+          prev.texto);
+      }
+    }
+  }
+
+  // ---- 6. El plan debe cubrir todo el periodo solicitado ----------------
+  // Concluyente solo cuando el documento declara AMBOS rangos y el del plan
+  // termina antes. Si falta alguno, no hay nada que comparar y se calla.
+  if(rangoPlan&&rangoAuth&&rangoPlan.fin<rangoAuth.fin){
+    const faltan=_molDays(rangoPlan.fin,rangoAuth.fin);
+    add('MOL_PLAN_COVERS_PERIOD','blocker',
+      `El plan de conducta cubre hasta ${new Date(rangoPlan.fin).toLocaleDateString('es')}, pero el período de autorización llega hasta ${new Date(rangoAuth.fin).toLocaleDateString('es')}: quedan ${faltan} días sin cubrir. ${P} devuelve las solicitudes cuyo plan no cubre todo el período solicitado (hasta seis meses).`,
+      'Extend the behavior plan so that it covers the full authorization period being requested, up to six months.',
+      rangoPlan.texto);
+  }
+
+  return findings;
+}
+
+/* ============================================================
+   EL CDE COMO DOCUMENTO SEPARADO  (Molina, QRG secc. 1 y 2)
+   ============================================================
+   El principio que gobierna todo este bloque, y la razon de que casi nada
+   aqui sea blocker:
+
+   EL AUDITOR NO VE EL PAQUETE. Ve UN texto extraido: el behavior assessment
+   o la reevaluacion. El CDE es otro archivo, que puede existir perfectamente
+   sin aparecer en este texto. Por eso el bloque NO afirma nunca "falta el
+   CDE": solo puede afirmar cosas sobre el documento que tiene delante.
+
+   De ahi la division en dos clases de regla:
+
+   a) CONCLUYENTES (blocker). El defecto esta EN ESTE TEXTO: el documento
+      declara que la evaluacion diagnostica cubre el requisito del behavior
+      assessment, o que las puntuaciones Vineland-3 / BASC-3 del CDE son la
+      base del FBA o del BIP. Molina lo niega de forma explicita: "Both
+      documents are required; one does not replace the other" y "these
+      instruments are never used to construct the FBA or BIP". Aqui no hay
+      nada que el paquete pueda salvar: lo escrito ya es el error.
+
+   b) NO CONCLUYENTES (warning / notice). El documento no menciona algo. Eso
+      NO prueba que falte en el paquete, igual que en MOL_PLAN_DATE_MISSING
+      un encabezado no extraido no prueba que falte la fecha. El hallazgo
+      pide verificar, y lo dice con esas palabras.
+
+   Lo que NO esta aqui a proposito: auditar el CONTENIDO del CDE (sus ocho
+   elementos obligatorios, la observacion directa, la firma). Ese documento
+   no es el que se sube. Cuando Rolando audite paquetes completos, ese es el
+   siguiente bloque, no este.
+============================================================ */
+
+// Indicios de que la frase atribuye algo a una PERSONA o INSTITUCION, no a un
+// instrumento. Sin esto, "diagnostico confirmado por la Dra. Perez con el
+// ADOS-2" -- que es correcto -- dispararia igual que "diagnosticado por ADOS-2".
+const CDE_RE_CLINICIAN=/\b(?:dr\.?|doctor|ph\.?\s?d|psy\.?\s?d|m\.?\s?d\b|physician|pediatrician|psychiatrist|psychologist|neurologist|practitioner|clinician|evaluator|arnp|aprn|nurse\s+practitioner|licensed|board[-\s]certified|hospital|clinic|medical\s+(?:group|center)|pediatrics|psychiatry|neurology|m[eé]dic[oa]|psic[oó]log[oa]|psiquiatra)\b/i;
+// Instrumentos: los diagnosticos que Molina nombra, mas Vineland/BASC, que son
+// los del behavior assessment y los que se confunden con el CDE.
+const CDE_RE_TOOL=/\b(?:ADOS(?:-2)?|ADI-R|CARS(?:-2)?|DISCO|M-?CHAT(?:-R)?|GARS(?:-[23])?|SRS(?:-2)?|SCQ|ASRS|BASC(?:-3)?|Vineland(?:-3|-II|-3\s+PRQ)?)\b/i;
+// Verbos con los que un texto atribuye el diagnostico a su fuente.
+const CDE_RE_ATTR=/\b(?:confirm(?:s|ed|ing)?|establish(?:es|ed)?|support(?:s|ed)?|indicat(?:es|ed|ive)|yield(?:s|ed)?|reveal(?:s|ed)?|show(?:s|ed|n)?|substantiat(?:es|ed)?|warrant(?:s|ed)?)\b/i;
+
+// Presencia de CUALQUIER rastro de procedencia diagnostica en el documento.
+const CDE_RE_REFERENCED=/\b(?:comprehensive\s+diagnostic\s+evaluation|diagnostic\s+evaluation|\bCDE\b|psychological(?:\s+\w+)?\s+evaluation|neuropsychological\s+evaluation|developmental\s+evaluation|diagnostic\s+(?:report|assessment\s+report)|diagnos(?:ed|is\s+(?:made|provided|rendered|established))\s+(?:by|at)|diagnosing\s+(?:provider|physician|clinician|practitioner|psychologist)|(?:date\s+of\s+(?:asd\s+)?diagnosis|diagnosis\s+date|date\s+diagnosed|diagnosed\s+on)|evaluaci[oó]n\s+diagn[oó]stica)\b/i;
+
+const CDE_RE_ASD=/\b(?:autism\s+spectrum\s+disorder|\bASD\b|autis(?:m|tic)|trastorno\s+del\s+espectro\s+autista|\bTEA\b)\b/i;
+// Nivel de severidad del DSM-5, en cualquiera de las formas en que se escribe.
+const CDE_RE_SEVERITY=[
+  /\b(?:severity\s+level|level\s+of\s+severity|DSM(?:-|\s)?5\s+level|nivel\s+de\s+severidad|nivel\s+de\s+gravedad)\b/i,
+  /\brequiring\s+(?:very\s+)?substantial\s+support\b/i,
+  /\brequiring\s+support\b/i,
+  /\bnivel\s*[123]\b/i
+];
+// "Level 2" suelto puede ser cualquier cosa (un nivel de prompting, un grado
+// escolar). Solo cuenta si cerca se habla de autismo, severidad o apoyos.
+const CDE_RE_LEVEL_N=/\blevel\s*(?:[123]|one|two|three)\b/ig;
+const CDE_RE_LEVEL_CTX=/\b(?:autis|asd|severity|support|dsm)/i;
+
+// Entornos, para la impairment across settings. Se cuentan FAMILIAS, no
+// palabras: "school" y "classroom" son el mismo entorno.
+const CDE_SETTINGS=[
+  /\b(?:at\s+)?home\b|\bhouseholds?\b|\bhogar\b|\bcasa\b/i,
+  /\bschool\b|\bclassroom\b|\bdaycare\b|\bpreschool\b|\bescuela\b|\bcolegio\b/i,
+  /\bcommunity\b|\bin\s+public\b|\bgrocery\s+store\b|\brestaurant\b|\bplayground\b|\bpark\b|\bcomunidad\b/i
+];
+const CDE_RE_IMPAIRMENT=/\b(?:functional\s+impairment|impairment|interfere(?:s|d|nce)?|adversely\s+affect|impacts?\s+(?:daily|his|her|their)|deterioro\s+funcional)\b/i;
+
+/* Trocea en clausulas. La atribucion de un diagnostico vive dentro de una
+   frase; cruzar el punto es lo que produce falsos positivos. */
+function _cdeClauses(text){
+  return text.split(/(?:[.;!?](?=\s|$))|[\n\r]+|\t|\|/).map(s=>s.trim()).filter(s=>s.length>8);
+}
+/* Primera clausula que cumple `pred`, recortada para matchedText. */
+function _cdeFind(clauses,pred){
+  for(const c of clauses){ if(pred(c)) return c.length>240?c.slice(0,240)+'…':c; }
+  return null;
+}
+
+function scanCdeSeparate(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity')return findings;
+  const P=(typeof PAYER!=='undefined'&&PAYER&&PAYER.nombre)?PAYER.nombre:'el pagador';
+  const add=(ruleId,severity,description,suggestedAction,matchedText)=>findings.push({
+    id:uid(),ruleId,severity,category:'cde_requirement',description,suggestedAction,
+    matchedText:matchedText||'',status:'open',createdAt:Date.now()
+  });
+  const clauses=_cdeClauses(text);
+
+  /* ---- 1. CONCLUYENTE: el CDE presentado como el behavior assessment ----
+     Las dos formas reales en que aparece. La primera es la declaracion
+     abierta ("el CDE cubre el requisito"). La segunda, mucho mas frecuente,
+     es citar las puntuaciones Vineland/BASC TOMADAS del CDE en lugar de
+     reportar una administracion propia: eso es exactamente el caso que
+     Molina describe. En ambos el defecto esta escrito aqui. */
+  const susCubre=/\b(?:cde|comprehensive\s+diagnostic\s+evaluation|diagnostic\s+evaluation|psychological\s+evaluation)\b[^.;\n]{0,90}\b(?:serves?\s+as|satisf(?:ies|y)|fulfill?s?|meets?\s+the\s+(?:requirement|need)|in\s+lieu\s+of|instead\s+of|substitut(?:es?|ing)\s+for|doubles?\s+as|is\s+(?:being\s+)?submitted\s+as)\b[^.;\n]{0,70}\b(?:behavior(?:al)?\s+assessment|assessment\s+requirement|required\s+assessment)\b/i;
+  const susDesde=/\b(?:vineland|basc)\b[^.;\n]{0,110}\b(?:from|per|within|included\s+in|contained\s+in|reported\s+in|taken\s+from|obtained\s+(?:from|in)|as\s+part\s+of|documented\s+in)\s+(?:the|a|his|her|their)\s+(?:\w+\s+){0,3}?(?:cde|comprehensive\s+diagnostic\s+evaluation|diagnostic\s+evaluation|psychological\s+evaluation|diagnostic\s+report)\b/i;
+  const susHacia=/\b(?:cde|comprehensive\s+diagnostic\s+evaluation|diagnostic\s+evaluation|psychological\s+evaluation)\b[^.;\n]{0,90}\b(?:includes?|included|contains?|contained|provides?|provided|reports?|reported)\b[^.;\n]{0,50}\b(?:vineland|basc)\b/i;
+  const mSus=_cdeFind(clauses,c=>susCubre.test(c)||susDesde.test(c)||susHacia.test(c));
+  if(mSus){
+    add('MOL_CDE_SUBSTITUTION','blocker',
+      `El documento presenta la evaluación diagnóstica (CDE) como si cubriera el requisito del behavior assessment, o toma de ella las puntuaciones Vineland-3 / BASC-3. ${P} trata los dos como requisitos separados: el CDE establece el diagnóstico; el behavior assessment exige los informes de puntuación completos de Vineland-3 y BASC-3 PRQ administrados y puntuados por el proveedor de BA. Uno no sustituye al otro y ambos se exigen en la solicitud.`,
+      'Administer and score the Vineland-3 and the BASC-3 PRQ as part of this behavior assessment, and submit the complete scoring reports. Cite the CDE only as the source of the diagnosis; do not cite it as the source of the assessment scores.',
+      mSus);
+  }
+
+  /* ---- 2. CONCLUYENTE: Vineland / BASC como base del FBA o del BIP ----
+     Exige un conector de atribucion entre el instrumento y el FBA. Sin el,
+     "se administraron el BASC-3 y el FBA" -- que es correcto -- dispararia.
+     Molina: estos instrumentos "are never used to construct the FBA or BIP". */
+  const fbaDesde=/\b(?:vineland|basc)\b[^.;\n]{0,110}\b(?:serve[sd]?\s+as|used\s+to|informed|inform(?:s|ed)|determin(?:e[sd]?|ing)|identif(?:y|ies|ied)|the\s+basis\s+(?:of|for)|basis)\b[^.;\n]{0,70}\b(?:functional\s+(?:behavior(?:al)?\s+)?(?:assessment|analysis)|\bFBA\b|behavior(?:al)?\s+intervention\s+plan|\bBIP\b|function\s+of\s+(?:the\s+)?behavio)/i;
+  const fbaHacia=/\b(?:functional\s+(?:behavior(?:al)?\s+)?(?:assessment|analysis)|\bFBA\b|behavior(?:al)?\s+intervention\s+plan|\bBIP\b|function\s+of\s+(?:the\s+)?behavio\w*)\b[^.;\n]{0,110}\b(?:based\s+(?:on|upon)|derived\s+from|per|according\s+to|using|utiliz(?:ing|ed)|informed\s+by|determined\s+(?:by|from)|identified\s+(?:by|from)|drawn\s+from)\b[^.;\n]{0,60}\b(?:vineland|basc)\b/i;
+  const mFba=_cdeFind(clauses,c=>fbaDesde.test(c)||fbaHacia.test(c));
+  if(mFba){
+    add('MOL_VINELAND_NOT_FBA','blocker',
+      `El documento apoya el FBA, el BIP o la función de la conducta en el Vineland-3 o el BASC-3. Son escalas normalizadas de funcionamiento adaptativo y conductual: describen el nivel del cliente, no la función de su conducta. ${P} exige que el FBA y el BIP se construyan con evaluación funcional propia, nunca con estos instrumentos.`,
+      'Derive the function of each target behavior from your own functional assessment (descriptive ABC data, interviews, and a functional analysis where indicated). Use the Vineland-3 and BASC-3 as outcome and severity measures only, never as evidence of function.',
+      mFba);
+  }
+
+  /* ---- 3. NO CONCLUYENTE: sin rastro de la procedencia del diagnostico ----
+     Solo en evaluacion inicial: para Medicaid el CDE se exige una vez al
+     inicio y NO caduca, asi que en una reevaluacion su ausencia del texto no
+     dice nada. Warning, nunca blocker: el CDE es otro archivo. */
+  if(docType==='assessment'&&!CDE_RE_REFERENCED.test(text)){
+    add('MOL_CDE_NOT_REFERENCED','warning',
+      `El documento no menciona la evaluación diagnóstica integral (CDE) ni de quién ni cuándo proviene el diagnóstico. ${P} exige el CDE en toda autorización inicial, hecho por un profesional de su lista cerrada, y la solicitud debe identificar al proveedor que emitió el diagnóstico y su fecha. Atención: el CDE es un documento aparte y el auditor solo ve este texto, de modo que esto NO prueba que falte en el paquete; verifíquelo.`,
+      'State in this assessment who made the ASD diagnosis, their credential, and the date of the diagnostic evaluation, and confirm the CDE is included in the authorization packet.',
+      '');
+  }
+
+  /* ---- 4. NO CONCLUYENTE: el diagnostico atribuido a un instrumento ----
+     Molina: "Scoring tools alone (CARS, ADOS, BASC-3) do not constitute a
+     formal diagnosis. A clinician must state the diagnosis explicitly."
+     Warning y no blocker porque el CDE puede enunciarlo bien; el defecto es
+     como lo redacta ESTE documento. La guarda de clinico es la que evita el
+     falso positivo del caso correcto. */
+  const dxDesdeTool=c=>{
+    if(!CDE_RE_TOOL.test(c)||!/diagnos/i.test(c))return false;
+    if(CDE_RE_CLINICIAN.test(c))return false;            // hay un autor humano: correcto
+    const toolPrimero=/\b(?:ADOS|ADI-R|CARS|DISCO|M-?CHAT|GARS|SRS|SCQ|ASRS|BASC|Vineland)\b[^.;\n]{0,80}/i.exec(c);
+    if(toolPrimero&&CDE_RE_ATTR.test(toolPrimero[0])&&/diagnos/i.test(c.slice(toolPrimero.index)))return true;
+    return /\bdiagnos\w*\b[^.;\n]{0,80}\b(?:based\s+(?:on|upon)|per|according\s+to|from|by|via|using)\b[^.;\n]{0,40}\b(?:ADOS|ADI-R|CARS|DISCO|M-?CHAT|GARS|SRS|SCQ|ASRS|BASC|Vineland)\b/i.test(c);
+  };
+  const mTool=_cdeFind(clauses,dxDesdeTool);
+  if(mTool){
+    add('MOL_CDE_DX_FROM_TOOL','warning',
+      `El documento apoya el diagnóstico en la puntuación de un instrumento sin nombrar al clínico que lo emitió. Para ${P} una puntuación no constituye un diagnóstico formal: el profesional evaluador debe enunciarlo de forma explícita. Reescríbalo atribuyéndolo a la persona, con el instrumento como apoyo y no como fuente.`,
+      'Attribute the diagnosis to the evaluating practitioner by name and credential, with the date, and present the instrument as supporting evidence: "ASD diagnosed by [name, credential] on [date]; the ADOS-2 supported the diagnosis."',
+      mTool);
+  }
+
+  /* ---- 5. NO CONCLUYENTE: psicologo escolar sin licencia documentada ----
+     Molina excluye de forma literal al "unlicensed school psychologist". Que
+     el texto omita "licensed" no prueba que no la tenga: por eso el hallazgo
+     pide documentarla. Exige contexto diagnostico para no disparar cuando el
+     psicologo escolar aparece como miembro del equipo. */
+  const escolar=c=>/school\s+psychologist/i.test(c)
+    && !/\blicen[cs]ed\s+school\s+psychologist/i.test(c)
+    && /\bdiagnos/i.test(c);
+  const mEsc=_cdeFind(clauses,escolar);
+  if(mEsc){
+    add('MOL_CDE_PRACTITIONER_UNCLEAR','warning',
+      `El diagnóstico se atribuye a un psicólogo escolar sin constar que esté licenciado. ${P} acepta al psicólogo escolar LICENCIADO dentro de su lista de profesionales habilitados y excluye de forma expresa al no licenciado, cuyo CDE no satisface el requisito de autorización. Documente la licencia o consiga el CDE de un profesional de la lista.`,
+      'Document the school psychologist\'s license (state license number and credential) in the diagnosis attribution, or obtain the diagnostic evaluation from another practitioner on the payer\'s qualified list.',
+      mEsc);
+  }
+
+  /* ---- 6. NO CONCLUYENTE: carta escolar en lugar de la evaluacion ----
+     Molina lo nombra dos veces entre las causas de devolucion: "School
+     accommodation letters alone are not sufficient" y "School accommodation
+     letters submitted in place of treatment recommendations". Patron estrecho
+     a proposito: un assessment cita el IEP de forma legitima todo el tiempo,
+     y solo importa cuando se lo presenta COMO la documentacion diagnostica. */
+  if(docType!=='iep'){
+    const cartaEscolar=/\b(?:504\s+plan|\bIEP\b|accommodation\s+letter|school\s+(?:accommodation|eligibility)\s+(?:letter|determination|report)|educational\s+eligibility)\b[^.;\n]{0,90}\b(?:serves?\s+as|as\s+the|confirms?|confirmed|establish(?:es|ed)?|documents?|documented|provides?\s+the|is\s+(?:the\s+)?(?:basis|evidence)|in\s+lieu\s+of|instead\s+of)\b[^.;\n]{0,70}\b(?:diagnos\w*|treatment\s+recommendations?|medical\s+necessity|eligibility\s+for\s+(?:ABA|BA|behavior)\b)/i;
+    const mCarta=_cdeFind(clauses,c=>cartaEscolar.test(c));
+    if(mCarta){
+      add('MOL_CDE_SCHOOL_LETTER','warning',
+        `El documento parece apoyar el diagnóstico, la necesidad médica o las recomendaciones de tratamiento en documentación escolar (IEP, plan 504 o carta de acomodaciones). Para ${P} la elegibilidad educativa no es un diagnóstico clínico y las cartas escolares por sí solas no bastan: hacen falta pruebas diagnósticas con puntuación e interpretación, y recomendaciones de tratamiento individualizadas del profesional evaluador.`,
+        'Cite the clinical diagnostic evaluation, not school documentation, as the source of the diagnosis and of the treatment recommendations. School records may be included as collateral information about functioning across settings.',
+        mCarta);
+    }
+  }
+
+  /* ---- 7. NO CONCLUYENTE: sin nivel de severidad del DSM-5 ----
+     Sale de la lista de causas de devolucion ("No severity level specified:
+     ... its absence leaves the intensity request without diagnostic
+     grounding"), no de la de elementos obligatorios. Warning, jamas blocker.
+     Solo si el documento afirma un diagnostico de TEA: sin eso no hay nivel
+     que pedir. Sin conflicto con R14: enunciar el NIVEL no es usar los
+     criterios del DSM como lista de objetivos, que es lo que R14 advierte. */
+  if((docType==='assessment'||docType==='reassessment')&&CDE_RE_ASD.test(text)){
+    let tieneNivel=CDE_RE_SEVERITY.some(re=>re.test(text));
+    if(!tieneNivel){
+      CDE_RE_LEVEL_N.lastIndex=0;
+      let m;
+      while((m=CDE_RE_LEVEL_N.exec(text))!==null){
+        const ventana=text.slice(Math.max(0,m.index-80),m.index+m[0].length+80);
+        if(CDE_RE_LEVEL_CTX.test(ventana)){tieneNivel=true;break;}
+      }
+    }
+    if(!tieneNivel){
+      add('MOL_DSM5_SEVERITY_MISSING','warning',
+        `No se detecta el nivel de severidad del DSM-5 (nivel 1, 2 o 3) con los apoyos que requiere. ${P} lo cuenta entre las causas frecuentes de devolución: sin el nivel, la intensidad de horas que se solicita queda sin fundamento diagnóstico. Si el nivel consta en el CDE, enúncielo también aquí, donde se pide la intensidad.`,
+        'State the DSM-5 severity level for ASD (Level 1, 2, or 3) and describe the support needs at that level, then tie the requested service intensity to it.',
+        '');
+    }
+  }
+
+  /* ---- 8. NO CONCLUYENTE: deterioro funcional en un solo entorno ----
+     "A diagnosis without documented functional impairment does not by itself
+     establish the need for intensive services." Umbral deliberadamente bajo:
+     basta que el documento nombre DOS de los tres entornos en cualquier
+     lugar. Un assessment normal los nombra, asi que esto salta solo en el
+     caso real de un documento que nunca sale de un entorno. notice. */
+  if((docType==='assessment'||docType==='reassessment')&&CDE_RE_IMPAIRMENT.test(text)){
+    const presentes=CDE_SETTINGS.filter(re=>re.test(text)).length;
+    if(presentes<2){
+      add('MOL_IMPAIRMENT_ONE_SETTING','notice',
+        `El documento describe deterioro o interferencia funcional pero solo nombra ${presentes===0?'ningún entorno':'un entorno'}. ${P} espera que el deterioro conste en más de un entorno (hogar Y escuela o comunidad): un diagnóstico sin deterioro funcional documentado no establece por sí solo la necesidad de servicios intensivos.`,
+        'Document how the target behaviors affect daily life in at least two environments (home and school or community), with examples from each.',
+        '');
+    }
+  }
+
+  return findings;
+}
+
+/* ============================================================
+   CRITERIOS DE ALTA OBJETIVOS  (Molina, QRG secc. 8)
+   ============================================================
+   *"A transition and discharge plan must be established at the initiation of
+   BA services not deferred until the member is ready to discharge."*
+   *"Discharge criteria should be objective and individualized, not vague.
+   'When clinically appropriate' is not a discharge criterion."*
+   El ejemplo que da el pagador es cuantitativo: 0 instancias de agresion
+   durante 6 meses, cuando el nivel actual es 50 instancias/dia.
+
+   Es la logica de PLACEHOLDER_TBD_CONVENTION aplicada al alta: el campo
+   existe, pero su contenido no compromete a nada. La diferencia es que aqui
+   el placeholder no es la cadena "TBD" sino una FORMULA CLINICA VAGA, que
+   parece contenido y no lo es.
+
+   LO QUE ESTE BLOQUE NO HACE, A PROPOSITO:
+
+   1. NO avisa de que falte la seccion. Ya lo hacen SEC_TRANSITION (en
+      REQUIRED_SECTIONS) y `dischargePlan` (en scanAdminRequiredElements). Sin
+      ancla de alta en el texto, este bloque CALLA. Dos hallazgos para una
+      misma laguna es el ruido que hace que un analista deje de leer el panel.
+   2. NO reclama los cinco criterios de alta de AHCA que el pagador reproduce.
+      Esos son los criterios DEL PAGADOR para cuando el alta procede, no una
+      lista que el plan deba copiar: copiarla es justamente lo contrario de
+      "individualized to the specific member". De ahi que reproducirla sea un
+      hallazgo (MOL_DISCHARGE_POLICY_BOILERPLATE) y no un requisito.
+   3. NO toca la excepcion de TBD en FECHA de alta, que sigue siendo
+      convencion valida (TBD_DATE_CONTEXT incluye `discharge date`). Un
+      "Discharge criteria: TBD" ya produce blocker por la via existente, asi
+      que si hay un TBD en la region este bloque le cede la palabra.
+
+   JERARQUIA: exactamente UN hallazgo para "los criterios no son objetivos",
+   el que mejor describa el caso. Se diagnostica en orden -- diferido, formula
+   vaga, calco de la politica, nada medible -- y el primero que encaja habla.
+============================================================ */
+
+// Ancla: de donde arranca la region de alta / transicion.
+const ALT_RE_ANCHOR=/\b(?:discharge\s+criteri\w*|criteri\w*\s+for\s+discharge|discharge\s+plan(?:ning)?|transition\s+(?:and|&|\/)\s*discharge|discharge\s+(?:and|&|\/)\s*transition|transition\s+plan(?:ning)?|step[-\s]?down\s+plan|fading\s+plan|criterios?\s+(?:de|para)\s+(?:el\s+)?alta|plan\s+de\s+(?:alta|transici[oó]n))\b/i;
+// Encabezados que cierran la region. No hay slicer de secciones en el auditor:
+// REQUIRED_SECTIONS solo busca palabras clave en todo el texto. Cerrar por
+// encabezado y con un tope de caracteres es mas robusto que inventar uno.
+const ALT_HEADING_WORDS=/^(?:\d+[.)]\s*|[ivx]+[.)]\s*|[a-z]\.\s*)?(?:crisis|emergency|safety|supervision|consent|assent|signature|generali[sz]ation|maintenance|parent\s+training|caregiver\s+training|family\s+training|service\s+(?:schedule|delivery)|billing|units|care\s+coordination|coordination\s+of\s+care|recommendations?|appendix|references?|goals?|objectives?|target\s+behavior|progress|assessment|behavior\s+(?:reduction|intervention)|medical\s+history|background|summary|conclusion|prognosis|barriers?|telehealth|attendance|firmas?|metas?|objetivos?)\b/i;
+
+/* Region de alta. Se devuelven TODAS las apariciones: si el ancla cae tambien
+   en un indice o en una lista de comprobacion, esa region sale vacia de
+   contenido pero la de verdad aporta la evidencia. Por eso la evidencia
+   POSITIVA (criterio medible, titracion de horas) se busca en la UNION, y la
+   NEGATIVA (formula vaga) por clausula: asi un indice no puede producir un
+   falso positivo, solo dejar de aportar. */
+function _altRegions(text){
+  const out=[];
+  const re=new RegExp(ALT_RE_ANCHOR.source,'gi');
+  let m;
+  while((m=re.exec(text))!==null){
+    const lines=text.slice(m.index,m.index+1800).split(/\r?\n/);
+    const buf=[lines[0]];
+    for(let i=1;i<lines.length;i++){
+      const L=lines[i].trim();
+      // Un renglon corto con nombre de otra seccion cierra la region. Si el
+      // renglon vuelve a hablar de alta, no es otra seccion: es la misma.
+      if(L.length>0&&L.length<=80&&ALT_HEADING_WORDS.test(L)&&!ALT_RE_ANCHOR.test(L))break;
+      buf.push(lines[i]);
+    }
+    out.push(buf.join('\n'));
+    if(re.lastIndex<=m.index)re.lastIndex=m.index+1;
+  }
+  return out;
+}
+
+/* Criterio MEDIBLE. Deliberadamente no es "hay un digito": la seccion vecina
+   puede traer horas y fechas. Un criterio de alta empareja un numero con un
+   porcentaje, un sustantivo de conteo conductual o una duracion sostenida. */
+const ALT_RE_MEASURABLE=[
+  /\b\d+(?:[.,]\d+)?\s*%/,
+  /\b(?:0|zero|cero|no|fewer\s+than|less\s+than|at\s+most|no\s+more\s+than|under|below)\s+(?:\d+\s+)?(?:instances?|episodes?|occurrences?|incidents?|events?|times|instancias?|episodios?)\b/i,
+  /\b\d+\s*(?:instances?|episodes?|occurrences?|incidents?|events?|times|instancias?|episodios?)\b/i,
+  /\b\d+\s+consecutive\s+(?:sessions?|weeks?|months?|days?)\b/i,
+  /\bfor\s+(?:at\s+least\s+)?\d+\s+(?:consecutive\s+)?(?:weeks?|months?|days?)\b/i,
+  /\bdurante\s+\d+\s+(?:semanas?|meses|d[ií]as)\b/i,
+  /\bfrom\s+\d+\s+to\s+\d+\b/i,
+  /\b(?:reduc\w+|decreas\w+)\s+(?:by\s+)?\d+(?:[.,]\d+)?\s*%/i,
+  /\b\d+\s*(?:per|\/)\s*(?:day|week|month|hour|session)\b/i,
+  /\bbelow\s+baseline\b/i,
+  /\b\d+\s+(?:or\s+fewer|or\s+less)\b/i
+];
+const _altMedible=s=>ALT_RE_MEASURABLE.some(re=>re.test(s));
+
+/* Formula vaga. Solo cuenta si la clausula habla TAMBIEN de alta, transicion
+   o criterio: "el entrenamiento a cuidadores se aumentara segun se necesite"
+   es prosa legitima dentro de la misma seccion y no debe disparar nada. */
+const ALT_RE_VAGUE=[
+  /\b(?:when|as|if|once)\s+clinically\s+(?:appropriate|indicated|warranted|necessary)\b/i,
+  /\bclinically\s+appropriate\b/i,
+  /\b(?:when|if|as)\s+deemed\s+(?:clinically\s+)?(?:appropriate|necessary|indicated)\b/i,
+  /\bat\s+the\s+discretion\s+of\b/i,
+  /\bwhen\s+(?:the\s+)?(?:client|member|child|patient)\s+is\s+ready\b/i,
+  /\bwhen\s+no\s+longer\s+(?:necessary|needed|indicated)\b/i,
+  /\bcuando\s+(?:sea|resulte|se\s+considere)\s+(?:cl[ií]nicamente\s+)?apropiado\b/i,
+  /\ba\s+discreci[oó]n\s+del?\b/i
+];
+// Segundo nivel: tan generales que dentro de la seccion pueden ser prosa
+// legitima. Solo cuentan si la clausula habla del ALTA en si, no de la
+// transicion en general.
+const ALT_RE_VAGUE_WEAK=[
+  /\b(?:when|as|if)\s+appropriate\b/i,
+  /\bas\s+needed\b/i,
+  /\bseg[uú]n\s+(?:sea\s+)?necesario\b/i
+];
+const ALT_RE_TOPIC_STRICT=/\b(?:discharge|discharged|criteri\w*|alta\b|egreso)\b/i;
+const ALT_RE_TOPIC=/\b(?:discharge|discharged|criteri\w*|transition\w*|step[-\s]?down|fad(?:e|ed|ing)|titrat\w*|alta\b|egreso)\b/i;
+
+/* Calco de la lista de AHCA que el pagador reproduce. Copiarla es la respuesta
+   de manual a "individualized": parece criterio y no dice nada del miembro. */
+const ALT_POLICY_ECHO=[
+  /\bno\s+longer\s+meets?\s+(?:the\s+)?medical\s+necessity(?:\s+criteria)?\b/i,
+  /\bno\s+longer\s+engages?\s+in\s+maladaptive\s+behavio\w*\b/i,
+  /\bno\s+longer\s+poses?\s+a\s+barrier\s+to\s+participation\b/i,
+  /\b(?:level\s+of\s+)?functional\s+impairment\s+no\s+longer\s+justifies\b/i,
+  /\b(?:parent|guardian)\s+(?:or\s+guardian\s+)?withdraws?\s+consent\b/i
+];
+
+/* Aplazamiento. "will be UPDATED" queda fuera a proposito: el pagador EXIGE
+   que el plan se revise y actualice a lo largo del tratamiento. Lo que prohibe
+   es que se CREE mas tarde. */
+const ALT_RE_DEFERRED=[
+  /\b(?:discharge|transition|step[-\s]?down|fading)\s+(?:criteri\w*|plan(?:ning)?)\b[^.;\n]{0,100}\b(?:will\s+be\s+(?:developed|established|determined|created|written|defined|addressed|formulated)|to\s+be\s+(?:developed|established|determined|defined)|has\s+not\s+(?:yet\s+)?been\s+(?:developed|established|determined|written)|is\s+not\s+(?:yet\s+)?(?:developed|established|available|applicable)|will\s+be\s+(?:added|completed|provided)\s+(?:later|at\s+a\s+later)|remains?\s+pending|is\s+pending)\b/i,
+  /\b(?:will\s+be\s+(?:developed|established|determined|created|defined)|to\s+be\s+determined)\b[^.;\n]{0,100}\b(?:discharge|transition|step[-\s]?down)\s+(?:criteri\w*|plan(?:ning)?)\b/i
+];
+
+/* Titracion de horas. El pagador lo pide TRES veces (secc. 8, la lista de
+   reautorizacion de secc. 5 y la casilla "Transition Plan Update"): es senal
+   de que falta a menudo. */
+const ALT_RE_TITRATION=/\b(?:titrat\w+|taper\w+|step(?:ped|ping)?[-\s]?down|fad(?:e|ed|ing)\s+(?:out\s+)?(?:of\s+)?(?:hours|services|service\s+hours|intensity|support)|(?:reduc\w+|decreas\w+|lower\w*|scal\w+\s+back)\s+(?:the\s+)?(?:number\s+of\s+)?(?:hours|intensity|units|service\s+hours|weekly\s+hours)|hours\s+(?:will\s+be|are|to\s+be)\s+(?:gradually\s+)?(?:reduc\w+|decreas\w+|titrat\w+|taper\w+|faded)|gradual(?:ly)?\s+(?:reduc\w+|decreas\w+|fad\w+)|from\s+\d+\s+(?:hours|hrs)[^.;\n]{0,40}\bto\s+\d+\s*(?:hours|hrs)|reducci[oó]n\s+(?:gradual\s+)?de\s+(?:las\s+)?horas)/i;
+
+/* Traspaso al entorno escolar. Solo cuando el propio texto dice que el
+   miembro no esta en la escuela o recibe ABA en su lugar. */
+const ALT_RE_NO_SCHOOL=/\b(?:does\s+not\s+attend\s+school|not\s+(?:currently\s+)?enrolled\s+in\s+school|in\s+lieu\s+of\s+school|instead\s+of\s+school|full[-\s]time\s+(?:ABA|behavior\s+analysis|BA\s+services)|withdrawn\s+from\s+school|unenrolled|homebound|no\s+asiste\s+a\s+la\s+escuela)\b/i;
+const ALT_RE_SCHOOL_PLAN=/\b(?:transition(?:ing)?\s+(?:back\s+)?to\s+(?:a\s+)?school|school[-\s]based\s+(?:setting|services|placement|transition|program)|return\s+to\s+school|school\s+re-?entry|re-?enroll\w*\s+in\s+school|enrollment\s+in\s+school|reintegraci[oó]n\s+escolar)\b/i;
+
+function _altClauses(s){
+  return s.split(/(?:[.;!?](?=\s|$))|[\n\r]+|\t|\|/).map(x=>x.trim()).filter(x=>x.length>6);
+}
+function _altFind(clauses,pred){
+  for(const c of clauses){ if(pred(c)) return c.length>240?c.slice(0,240)+'…':c; }
+  return null;
+}
+
+function scanDischargeCriteria(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+  const regiones=_altRegions(text);
+  // Sin ancla no hay nada que juzgar, y la ausencia de la seccion ya la
+  // reportan SEC_TRANSITION y dischargePlan. Este bloque calla.
+  if(!regiones.length)return findings;
+
+  const P=(typeof PAYER!=='undefined'&&PAYER&&PAYER.nombre)?PAYER.nombre:'el pagador';
+  const add=(ruleId,severity,description,suggestedAction,matchedText)=>findings.push({
+    id:uid(),ruleId,severity,category:'discharge_criteria',description,suggestedAction,
+    matchedText:matchedText||'',status:'open',createdAt:Date.now()
+  });
+  const union=regiones.join('\n');
+  const clauses=[];
+  for(const r of regiones)clauses.push(..._altClauses(r));
+  const medible=_altMedible(union);
+
+  // ---- A. Aplazado a mas adelante (concluyente) --------------------------
+  // El pagador lo prohibe con esas palabras: el plan se establece AL INICIO.
+  const mDif=_altFind(clauses,c=>ALT_RE_DEFERRED.some(re=>re.test(c)));
+  if(mDif){
+    add('MOL_DISCHARGE_DEFERRED','blocker',
+      `El documento aplaza el plan de alta o de transición a un momento posterior. ${P} exige que se establezca AL INICIO de los servicios de análisis de conducta, no cuando el miembro esté cerca del alta, y que se revise y actualice a lo largo del tratamiento. Escríbalo ahora, con los criterios de este miembro.`,
+      'Write the transition and discharge plan now, at initiation: objective criteria individualized to this member\'s current levels, the skills needed for a lower level of care, and how hours will be titrated as those criteria are met. Update it at each reassessment.',
+      mDif);
+  }
+
+  // ---- B. Formula vaga sin nada medible (concluyente) --------------------
+  // Se exige que NO haya criterio medible en toda la region: si lo hay, la
+  // formula vaga es prosa descuidada y no el criterio, y un blocker seria
+  // falso. Con formula vaga Y nada medible, lo escrito ya es el defecto.
+  if(!medible&&!mDif){
+    const mVago=_altFind(clauses,c=>
+      (ALT_RE_TOPIC.test(c)&&ALT_RE_VAGUE.some(re=>re.test(c)))
+      ||(ALT_RE_TOPIC_STRICT.test(c)&&ALT_RE_VAGUE_WEAK.some(re=>re.test(c))));
+    if(mVago){
+      add('MOL_DISCHARGE_VAGUE','blocker',
+        `Los criterios de alta se enuncian con una fórmula vaga y no hay ningún criterio medible en toda la sección. ${P} lo dice de forma literal: los criterios de alta deben ser objetivos e individualizados, y «cuando sea clínicamente apropiado» no es un criterio de alta. El ejemplo que da el propio pagador es cuantitativo: 0 instancias de agresión durante 6 meses, cuando el nivel actual es de 50 instancias al día.`,
+        'Replace the vague formula with measurable criteria tied to this member\'s current levels: name each target behavior, its current rate, the rate that would justify a lower level of care, and for how long it must be sustained (e.g., "0 instances of aggression for 6 consecutive months; current level 50 per day").',
+        mVago);
+    }
+  }
+
+  // ---- C. Calco de la lista de la politica (no concluyente) -------------
+  // Dos o mas de los criterios de AHCA reproducidos, sin nada medible. Es la
+  // respuesta de plantilla: parece criterio y no dice nada de este miembro.
+  const ecos=ALT_POLICY_ECHO.filter(re=>re.test(union)).length;
+  const yaHablo=findings.length>0;
+  if(!medible&&!yaHablo&&ecos>=2){
+    add('MOL_DISCHARGE_POLICY_BOILERPLATE','warning',
+      `La sección de alta reproduce ${ecos} de los criterios generales de la política (no cumple criterios de necesidad médica, ya no presenta conductas maladaptativas, el deterioro funcional ya no lo justifica…) sin un solo dato de este miembro. Esos son los criterios del pagador para cuando el alta procede, no una lista que el plan deba copiar: ${P} exige criterios individualizados a este miembro y a sus niveles actuales. Copiar la política es justo lo contrario.`,
+      'Keep the policy language only as a framing sentence, and state underneath the measurable criteria for THIS member: each target behavior, its current level, the level required for step-down, and the duration it must be maintained.',
+      '');
+  }
+
+  // ---- D. Nada medible, sin sintoma mas preciso (no concluyente) --------
+  // Ultimo eslabon de la jerarquia. Warning y no blocker porque los criterios
+  // pueden venir en una tabla que la extraccion no recupero. Y si en la region
+  // hay un TBD, la palabra la tiene la regla de TBD que ya existe.
+  const hayTbd=/\b(?:TBD|TBA)\b/.test(union);
+  if(!medible&&findings.length===0&&!hayTbd){
+    add('MOL_DISCHARGE_NOT_OBJECTIVE','warning',
+      `La sección de alta o transición no contiene ningún criterio medible: ni un porcentaje, ni un conteo de conducta, ni una duración sostenida. ${P} exige criterios objetivos e individualizados a este miembro y a sus habilidades actuales. Atención: si los criterios están en una tabla, puede que la extracción del .docx no la haya recuperado; verifíquelo en el documento.`,
+      'State the discharge criteria as measurable thresholds for this member: for each target behavior, its current level, the level that would justify a lower level of care, and how long it must be sustained.',
+      '');
+  }
+
+  // ---- E. Sin titracion de horas (no concluyente) -----------------------
+  if(!ALT_RE_TITRATION.test(union)){
+    add('MOL_TRANSITION_NO_TITRATION','warning',
+      `El plan de transición no describe cómo se proyecta reducir las horas a medida que se alcanzan las metas de transición. ${P} lo pide en tres lugares distintos de su guía —el plan de transición, la actualización en cada reautorización y la casilla de la lista de comprobación—, de modo que es una de las lagunas que más devuelven solicitudes.`,
+      'Add the projected titration: the current weekly hours, the milestones that trigger each reduction, and the target hours after each step (e.g., "at 3 consecutive months below 2 instances/week, reduce 97153 from 25 to 20 hours/week"). Pair it with increased caregiver training as the member approaches the criteria.',
+      '');
+  }
+
+  // ---- F. ABA a tiempo completo sin traspaso escolar (no concluyente) ---
+  if(ALT_RE_NO_SCHOOL.test(text)&&!ALT_RE_SCHOOL_PLAN.test(text)){
+    add('MOL_DISCHARGE_SCHOOL_TRANSITION','notice',
+      `El documento indica que el miembro no asiste a la escuela o recibe análisis de conducta a tiempo completo en su lugar, y no se detecta un plan documentado para trasladarlo a un entorno escolar. ${P} lo exige para los miembros en edad escolar cuyo ABA a tiempo completo impide la asistencia.`,
+      'Document the plan for transitioning to a school-based setting: the skills needed for the classroom, the timeline, the coordination with the school district, and how ABA hours will be adjusted around the school day.',
+      '');
+  }
+
+  return findings;
+}
+
+/* ============================================================
+   INCONGRUENCIA DE HORAS DENTRO DEL MISMO PLAN
+   ============================================================
+   Decision de Rolando, y es la correcta: el auditor NO juzga cuantas horas
+   pedir. Se piden 30, el seguro las acepta o las reduce, y esa negociacion no
+   es asunto del auditor. Lo que si es un defecto del documento es que en una
+   seccion se pidan unas horas y en otra del mismo plan aparezcan otras.
+
+   Por eso NO hay aqui ningun umbral. Ni el techo de 40 h de Florida, ni las
+   25 h directas de MCP 482, ni los rangos de CASP. Solo coherencia interna.
+   Misma forma que AGE_INCONSISTENCY: categoria 'internal_contradiction',
+   severidad 'warning', el sistema ALERTA y la decision es del analista.
+
+   EL PROBLEMA REAL DE ESTA REGLA SON LOS FALSOS POSITIVOS. Un plan bien
+   escrito esta lleno de cifras de horas distintas y todas correctas:
+   97153 a 25 h, 97155 a 4 h, 97156 a 2 h, "2 horas por sesion", "hasta 40 h
+   por semana" citando la politica, "previamente autorizado a 20 h". Comparar
+   toda cifra contra toda cifra avisaria en CADA plan y el panel dejaria de
+   servir. De ahi la regla que gobierna el bloque:
+
+     SOLO SE COMPARAN CIFRAS QUE AMBAS DIGAN SER LA MISMA MAGNITUD.
+
+   Un total declarado se compara con otro total declarado. Las horas de un
+   codigo, con la linea de ese mismo codigo. Nunca un total contra el desglose
+   de una linea, ni una cifra del pasado contra la que se solicita, ni un
+   techo de la politica contra lo pedido: no son la misma magnitud.
+
+   Y hay una exclusion que sale directo de la tension entre CASP y el pagador
+   (ver FUNDAMENTO §5.2): un total declarado que NO cuadra con la suma de
+   todas las lineas puede estar cuadrando con la suma de las lineas DIRECTAS,
+   porque CASP -- y MCP 482, que usa la palabra "direct" -- definen la
+   intensidad excluyendo supervision y entrenamiento a cuidadores. Eso no es
+   una incongruencia, es la otra metrica. Solo se avisa si el total no cuadra
+   con NINGUNA de las dos lecturas, y el hallazgo nombra las dos sumas para
+   que el analista vea cual habria cuadrado.
+============================================================ */
+
+// Etiqueta de TOTAL o de SOLICITUD: la cifra dice ser el total del plan.
+const HRS_RE_TOTAL_LABEL=/\b(?:total|totaling|totalling|combined|overall|altogether|aggregate|requested|requesting|request|recommended|recommending|recommendation|proposed|proposing|seeking|authorized\s+for|approved\s+for|solicitad\w*|total\w*|recomendad\w*|propuest\w*)\b/i;
+// Magnitudes que NO son el total solicitado. Cada una fue un falso positivo
+// que habria avisado en un plan correcto.
+const HRS_RE_NOT_TOTAL=/\b(?:previous(?:ly)?|prior|last|expiring|current(?:ly)?\s+authorized|current\s+authorization|was\s+authorized|had\s+been|historical|initially|at\s+intake|baseline|up\s+to|maximum|max\b|no\s+more\s+than|cap(?:ped)?|ceiling|limit(?:ed)?|covers?\b|policy|allowable|per\s+session|each\s+session|per\s+day|per\s+month|97151|97152|97153|97154|97155|97156|supervision|caregiver\s+training|parent\s+training|family\s+guidance|protocol\s+modification|anterior|previa\w*|hasta\b)\b/i;
+
+const HRS_RE_AFTER=/(\d{1,3}(?:[.,]\d+)?)\s*(?:hours?|hrs?)\s*(?:per\s*week|\/\s*week|a\s+week|weekly|semanales?|por\s+semana)/ig;
+// El separador NO puede cruzar el salto de linea: "Total hours\n5 goals are
+// targeted" daria 5 horas. Y "total hours" a secas se descarta por generico
+// ("total hours of caregiver training"). Exige la forma de campo o de celda.
+const HRS_RE_BEFORE=/\b(?:total\s+(?:weekly\s+hours|hours\s+per\s+week)|weekly\s+hours(?:\s+requested)?|hours\s+(?:per\s+week\s+)?requested|hours\s+requested|requested\s+hours|total\s+de\s+horas\s+semanales|horas\s+solicitadas)\b(?:[ \t]*[:=|][ \t]*|[ \t]+)(\d{1,3}(?:[.,]\d+)?)\b/ig;
+
+const HRS_DIRECT_CODES=/^(?:97153|97154)/;
+const HRS_ASSESS_CODES=/^(?:97151|97152)/;
+const HRS_TOL=0.5;   // las horas se escriben en cuartos; media hora de holgura
+
+/* Etiqueta que precede a la cifra, SIN cruzar el renglon ni la oracion. Es el
+   mismo cuidado que _molLabeledDate: el \s* final de un patron de etiqueta se
+   traga el salto de linea y entonces la cifra del renglon siguiente pasa por
+   propia. Aqui se recorta a mano por eso. */
+function _hrsWindow(text,index,len){
+  let before=text.slice(Math.max(0,index-90),index);
+  const cut=Math.max(before.lastIndexOf('\n'),before.lastIndexOf('\r'),
+                     before.lastIndexOf('. '),before.lastIndexOf('\t'),before.lastIndexOf('|'));
+  if(cut!==-1)before=before.slice(cut+1);
+  let after=text.slice(index+len,Math.min(text.length,index+len+40));
+  const cutA=after.search(/[\n\r]|(?:\.\s)|\t|\|/);
+  if(cutA!==-1)after=after.slice(0,cutA);
+  return before+' \u0001 '+after;
+}
+
+/* Totales declarados. Devuelve [{valor, texto, index}], ya filtrados. */
+function _hrsTotals(text){
+  const out=[];
+  HRS_RE_AFTER.lastIndex=0;
+  let m;
+  while((m=HRS_RE_AFTER.exec(text))!==null){
+    const v=parseFloat(String(m[1]).replace(',','.'));
+    if(!isFinite(v)||v<=0||v>168)continue;
+    const w=_hrsWindow(text,m.index,m[0].length);
+    if(HRS_RE_NOT_TOTAL.test(w))continue;       // no es el total solicitado
+    if(!HRS_RE_TOTAL_LABEL.test(w))continue;    // no dice ser un total
+    out.push({valor:v,texto:m[0].trim(),index:m.index});
+  }
+  HRS_RE_BEFORE.lastIndex=0;
+  while((m=HRS_RE_BEFORE.exec(text))!==null){
+    const v=parseFloat(String(m[1]).replace(',','.'));
+    if(!isFinite(v)||v<=0||v>168)continue;
+    const w=_hrsWindow(text,m.index,m[0].length);
+    if(HRS_RE_NOT_TOTAL.test(w))continue;
+    out.push({valor:v,texto:m[0].trim(),index:m.index});
+  }
+  return out;
+}
+
+/* Sumas del canonico, en las dos lecturas de la metrica. */
+function _hrsSums(canonical){
+  const cpt=(canonical&&Array.isArray(canonical.cpt))?canonical.cpt:null;
+  if(!cpt)return null;
+  let directa=0,todas=0,nDir=0,nTod=0;
+  const lineas=[];
+  for(const l of cpt){
+    if(!l||!l.code)continue;
+    const code=String(l.code).trim();
+    if(HRS_ASSESS_CODES.test(code))continue;        // evaluacion no es intervencion
+    const h=parseFloat(l.hoursPerWeek);
+    if(!isFinite(h)||h<=0)continue;
+    todas+=h;nTod++;
+    if(HRS_DIRECT_CODES.test(code)){directa+=h;nDir++;}
+    lineas.push(`${code}${l.modifier?' '+l.modifier:''}: ${h} h/sem`);
+  }
+  if(!nTod)return null;
+  const r=x=>Math.round(x*100)/100;
+  return {directa:r(directa),todas:r(todas),nDir,nTod,lineas};
+}
+
+function scanHoursConsistency(text,canonical,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='iep')return findings;
+  const add=(ruleId,description,suggestedAction,matchedText)=>findings.push({
+    id:uid(),ruleId,severity:'warning',category:'internal_contradiction',
+    description,suggestedAction,matchedText:matchedText||'',status:'open',createdAt:Date.now()
+  });
+
+  // ---- 1. Dos totales declarados que no coinciden ------------------------
+  const totales=_hrsTotals(text);
+  const valores=[];
+  for(const t of totales)if(!valores.some(v=>Math.abs(v-t.valor)<=HRS_TOL))valores.push(t.valor);
+  if(valores.length>1){
+    const orden=valores.slice().sort((a,b)=>a-b);
+    const citas=[];
+    for(const v of orden){
+      const t=totales.find(x=>Math.abs(x.valor-v)<=HRS_TOL);
+      if(t&&!citas.includes(t.texto))citas.push(t.texto);
+    }
+    add('HOURS_TOTAL_CONFLICT',
+      `Las horas semanales solicitadas no coinciden entre secciones: el documento declara ${orden.join(' y ')} horas por semana en distintos lugares ("${citas.join('", "')}"). Verifique cuál es la cifra correcta y unifíquela en todo el plan, incluida la tabla de códigos y la justificación de necesidad médica. El sistema solo alerta; la decisión es del analista.`,
+      'Reconcile the requested weekly hours across every section of the plan: the service schedule, the CPT/units table, the intensity justification and the narrative must all state the same figure.',
+      citas.join(' / '));
+  }
+
+  // ---- 2. El total declarado no cuadra con ninguna lectura de las lineas -
+  // Si cuadra con la suma DIRECTA, no hay incongruencia: es la metrica de
+  // CASP, que MCP 482 adopta al decir "direct". Solo se avisa si no cuadra
+  // con ninguna de las dos, y se nombran las dos para que se vea.
+  const sumas=_hrsSums(canonical);
+  if(sumas&&valores.length===1&&sumas.todas>0){
+    const tot=valores[0];
+    const cuadraTodas=Math.abs(tot-sumas.todas)<=HRS_TOL;
+    const cuadraDirecta=sumas.nDir>0&&Math.abs(tot-sumas.directa)<=HRS_TOL;
+    if(!cuadraTodas&&!cuadraDirecta){
+      add('HOURS_TOTAL_VS_CPT_SUM',
+        `El total declarado de ${tot} horas por semana no cuadra con la tabla de códigos bajo ninguna de las dos lecturas: las líneas de intervención suman ${sumas.todas} h/sem en total${sumas.nDir?`, y ${sumas.directa} h/sem contando solo tratamiento directo (97153, 97154)`:''}. Líneas contabilizadas: ${sumas.lineas.join('; ')}. Los códigos de evaluación (97151, 97152) no se incluyen. Si la cifra declarada pretendía ser solo el tratamiento directo, habría cuadrado con ${sumas.directa} h/sem; no cuadra con ninguna, así que hay una cifra mal escrita. El sistema solo alerta; la decisión es del analista.`,
+        'Reconcile the stated weekly total with the CPT table, and state explicitly which metric the total uses: all intervention lines, or direct treatment only (excluding supervision and caregiver training).',
+        String(tot));
+    }
+  }
+
+  // ---- 3. Las horas de un codigo en la narrativa contra su propia linea --
+  if(sumas){
+    const porCodigo={};
+    for(const l of (canonical.cpt||[])){
+      if(!l||!l.code)continue;
+      const code=String(l.code).trim().match(/\d{5}/);
+      if(!code)continue;
+      const h=parseFloat(l.hoursPerWeek);
+      if(!isFinite(h)||h<=0)continue;
+      // Si un codigo trae mas de una linea (p. ej. 97155 y 97155 HN) no se
+      // puede saber a cual se refiere la narrativa: se descarta el codigo.
+      porCodigo[code[0]]=porCodigo[code[0]]===undefined?h:null;
+    }
+    const vistos=new Set();
+    const re=/\b(9715[1-6])\b[^.;\n]{0,80}?(\d{1,3}(?:[.,]\d+)?)\s*(?:hours?|hrs?)\s*(?:per\s*week|\/\s*week|a\s+week|weekly)|(\d{1,3}(?:[.,]\d+)?)\s*(?:hours?|hrs?)\s*(?:per\s*week|\/\s*week|a\s+week|weekly)[^.;\n]{0,80}?\b(9715[1-6])\b/ig;
+    let m;
+    while((m=re.exec(text))!==null){
+      const code=m[1]||m[4];
+      const h=parseFloat(String(m[2]||m[3]).replace(',','.'));
+      if(!code||!isFinite(h)||porCodigo[code]==null)continue;
+      if(Math.abs(h-porCodigo[code])<=HRS_TOL)continue;
+      if(vistos.has(code))continue;
+      vistos.add(code);
+      add('HOURS_CODE_CONFLICT',
+        `El código ${code} aparece con ${h} horas por semana en la narrativa y con ${porCodigo[code]} h/sem en la tabla de códigos del plan. Verifique cuál es la correcta y unifíquela. El sistema solo alerta; la decisión es del analista.`,
+        `Make the hours stated for ${code} in the narrative match the CPT/units table, and check the unit count derived from it.`,
+        m[0].trim().slice(0,160));
+    }
+  }
+
+  return findings;
+}
+
 function scanAgeConsistency(text){
   const findings=[];
   if(!text)return findings;
@@ -4652,9 +5647,9 @@ async function runConceptualAudit(text){
   
   const prompt=`You are a Board-Certified Behavior Analyst (BCBA) and Florida Medicaid ABA compliance expert conducting a deep clinical and regulatory audit of an ABA assessment or reassessment document. Your job is to identify issues that an automated terminology scanner would NOT catch — including logical, structural, functional, and regulatory problems.
 
-This document is for a SINGLE client in the state of Florida under Sunshine Health / Florida Medicaid managed care ABA coverage (CPT codes 97151, 97153, 97155, 97156). All Florida Medicaid § 59G-1.010 standards apply.
+This document is for a SINGLE client in the state of Florida under ${PAYER.nombre} / Florida Medicaid managed care ABA coverage (CPT codes 97151, 97153, 97155, 97156). All Florida Medicaid § 59G-1.010 standards apply.
 
-FLORIDA MEDICAID & SUNSHINE HEALTH SPECIFIC CHECKS (mark as BLOCKER):
+FLORIDA MEDICAID & ${PAYER.nombre} SPECIFIC CHECKS (mark as BLOCKER):
 A. Medical necessity documentation [Florida Medicaid Coverage Policy, December 2024, Section 59G-4.125]: must explicitly address all five elements required for Medicaid authorization: (1) functional impairment in daily activities, (2) safety risk to self or others, (3) escalation trajectory without treatment, (4) ABA as the evidence-based approach, (5) least-restrictive setting justification. Flag any missing element as a blocker — absence of any element is grounds for authorization denial.
 
 B. CPT 97156 caregiver training scope [Florida Medicaid Coverage Policy, December 2024]: CPT 97156 covers training caregivers to implement the behavior support plan. Flag if 97156 content describes: data collection by caregivers (not authorized — per CASP ABA Practice Guidelines 3rd Ed. 2024, caregivers do not collect clinical data), clinical assessment procedures, or procedures that belong under 97155. Caregiver training is strictly limited to three areas per CASP: (1) antecedent strategies and environmental modifications, (2) support of replacement/acquisition goals in natural routines, (3) delivery of reinforcement.
@@ -6164,6 +7159,12 @@ const REPORT_CAT_LABELS={
     supervision_bacb:'Supervision (BACB)',
     'supervision bacb':'Supervision (BACB)',
     supervision:'Supervision',
+    payer_timelines:'Payer timelines',
+    cde_requirement:'CDE (diagnostic evaluation)',
+    discharge_criteria:'Discharge criteria',
+    'discharge criteria':'Discharge criteria',
+    'cde requirement':'CDE (diagnostic evaluation)',
+    'payer timelines':'Payer timelines',
     florida_medicaid:'Florida Medicaid',
     'florida medicaid':'Florida Medicaid',
     ioa_requirement:'IOA requirement',
@@ -7158,7 +8159,7 @@ async function generateMedicalNecessityBrief(format){
   const btns=document.querySelectorAll('[onclick^="generateMedicalNecessityBrief"]');
   btns.forEach(b=>{b.disabled=true;b.dataset._t=b.textContent;b.textContent='Generando…';});
   try{
-    const prompt=`You are a Board-Certified Behavior Analyst (BCBA) drafting the MEDICAL NECESSITY justification section of a Florida Medicaid ABA (re)assessment, for a SINGLE client under Sunshine Health / Florida Medicaid managed care (CPT 97151/97153/97155/97156). The output is professional ENGLISH prose the analyst will paste directly into the assessment.
+    const prompt=`You are a Board-Certified Behavior Analyst (BCBA) drafting the MEDICAL NECESSITY justification section of a Florida Medicaid ABA (re)assessment, for a SINGLE client under ${PAYER.nombre} / Florida Medicaid managed care (CPT 97151/97153/97155/97156). The output is professional ENGLISH prose the analyst will paste directly into the assessment.
 
 ABSOLUTE GROUNDING RULE — ZERO FABRICATION: Use ONLY information present in the document and the extracted structure below. NEVER invent any number — no frequencies, durations, counts, trials, percentages, rates, hours, or unit totals. If a number is not documented, describe the matter qualitatively in observable terms, or list it under "gaps" for the BCBA to complete. Inventing data is Medicaid fraud risk.
 
@@ -7398,7 +8399,7 @@ function appealFormHTML(){
     ${hints}
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px">
       <div><label class="label" style="font-size:12px">Pagador / plan</label>
-        <input type="text" id="apPayer" class="input" placeholder="p. ej., Sunshine Health"></div>
+        <input type="text" id="apPayer" class="input" placeholder="p. ej., ${escapeHtml(PAYER.nombre)}"></div>
       <div><label class="label" style="font-size:12px">N.º de caso / autorización</label>
         <input type="text" id="apCase" class="input" placeholder="p. ej., AUTH-123456"></div>
       <div><label class="label" style="font-size:12px">Fecha del aviso de denegación</label>
@@ -7959,7 +8960,7 @@ async function translateReportToEnglish(htmlContent){
 STRICT RULES:
 - Output the SAME HTML: preserve every tag, attribute, inline style, class, and the overall structure exactly. Translate ONLY the human-readable text content between tags.
 - Translate Spanish text to professional clinical English. Leave text that is already in English unchanged.
-- Do NOT translate: clinical acronyms and standard names (BACB, CASP, DRA, DRI, DRO, FCT, DNRA, NCR, RIRD, FAST, MAS, IOA, CPT, IDEA, DSM-5, ICD-10, Florida Medicaid, Sunshine Health), proper names, client codes, dates, numbers, file names, or quoted document excerpts that are in English.
+- Do NOT translate: clinical acronyms and standard names (BACB, CASP, DRA, DRI, DRO, FCT, DNRA, NCR, RIRD, FAST, MAS, IOA, CPT, IDEA, DSM-5, ICD-10, Florida Medicaid, ${PAYER.nombre}), proper names, client codes, dates, numbers, file names, or quoted document excerpts that are in English.
 - Keep the function labels consistent: Escape, Attention, Tangible, Automatic, Multiple. Translate "Función"→"Function", "Reemplazos"→"Replacements", "Intervenciones"→"Interventions", "fuente"→"source", "no declarada"→"not stated", "NO coincide con la función de la conducta"→"DOES NOT match the behavior's function", "Sin reemplazo asociado"→"No associated replacement", "Sin intervenciones listadas"→"No interventions listed".
 - Do not add, remove, or reorder any content. Do not wrap the output in markdown fences or add commentary.
 
