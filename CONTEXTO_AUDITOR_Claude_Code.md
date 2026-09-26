@@ -330,6 +330,36 @@ Así que la regla es de **corrección sin integrar, no de idioma**. Siempre `war
 
 ---
 
+### 1.14 Actividad sensorial como conducta de reemplazo (`_intvReplacementCtx`)
+
+**Decisión de Rolando** sobre el caso que apareció en el reassessment de Safira: `INT_PROH_SENSORY` baja a `warning` cuando la mención está dentro de un programa de conducta de reemplazo. El razonamiento clínico es que enseñar una búsqueda sensorial apropiada que **compita** con una estereotipia mantenida automáticamente es práctica defendible —estimulación pareada, estímulos competidores—, mientras que prescribir actividad sensorial como tratamiento no lo es. Lo que queda es un defecto de **redacción**, no de plan: se avisa sin bloquear.
+
+**No es una exención.** El hallazgo sigue saliendo, con su cuenta de apariciones y con otro texto y otra acción sugerida: la acción de blocker («reemplace cada aparición por una intervención autorizada») sería consejo equivocado para un programa de reemplazo legítimo.
+
+**Solo la fila sensorial.** El interruptor es `replacementWarn` en la fila de `PROH_SENSORY`, como `reinforcerOk`. `Replacement Behavior: deep breathing when frustrated` **sigue siendo blocker**, y hay un caso que lo fija: la respiración profunda no se vuelve aceptable por llamarse conducta de reemplazo.
+
+**Tres señales descartadas después de medirlas en el documento real**, no en abstracto:
+
+| Señal | Por qué no |
+|---|---|
+| `DRA` / `DRI` | Aparecen **46 veces**, en la lista de intervenciones de cada conducta. Es boilerplate: no dice nada de esta mención en concreto |
+| `alternative behavior` | Está dentro de ese mismo boilerplate: *«differential reinforcement of alternative behaviors (DRA)»* |
+| `instead of` | Genérico. *«Sensory strategies will be used instead of extinction»* es justo la prescripción que hay que bloquear |
+
+Queda `INTV_REPLACEMENT_CTX`: `replacement behavior/program/skill/response`, `conducta(s) de reemplazo`, `appropriate … seeking/alternatives`, `functionally equivalent`, `competing/matched stimuli` y `without engaging in stereotypy/disruptive/problem/challenging`. Solo lo que puede significar que la mención es **la conducta del cliente** y no un tratamiento que se le aplica.
+
+**La ventana son dos pasos, y el segundo solo se vio al medirlo.** Se busca en la entrada de programa (`_termProgramEntry`), no en la cláusula, porque la quinta aparición del caso real es *«Reinforce engagement with designated sensory tools»* —la que el PR #6 decidió a propósito NO eximir— y su cláusula no lleva ninguna señal aunque esté dentro del programa. Pero esa aparición cae dentro del `Procedure:`, y `_termProgramEntry` arranca justo ahí, dejando fuera la `Definition:` que nombra la conducta de reemplazo. Así que **cuando la entrada empieza en una subsección** (`Definition`, `Procedure`, `Barrier`, `Teaching`) se extiende hacia atrás recorriendo las subsecciones hermanas hasta la cabecera de la entrada, y ahí se para.
+
+**La extensión no se hace si la entrada empieza en cualquier otro marcador** (`STO#1`, `Target Behavior:`): ahí mirar hacia atrás sería leer la entrada de al lado, y es exactamente como una tabla de conductas de reemplazo acabaría exculpando una prescripción sensorial escrita más abajo. Hay un caso adversario en `reemp_browser.js` que lo fija.
+
+**`_termProgramEntry` se dejó intacta a propósito:** la comparte el bloque de terminología, y cambiarla movería su comportamiento sin que nadie lo pida. La extensión vive en la función nueva.
+
+**Se baja solo si TODAS las apariciones vivas están en contexto de reemplazo.** La tarjeta es una sola y no puede tener dos severidades, así que manda la peor: un documento que además prescriba actividad sensorial como tratamiento en algún sitio sigue dando blocker.
+
+**Efecto medido:** un solo hallazgo en un solo documento. Safira pasó de 2 blockers a 1; los otros dos documentos quedaron idénticos regla por regla.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.
