@@ -42,6 +42,16 @@ Comparar fechas internas del documento además hace las reglas **reproducibles**
 
 **Ambigüedad de formato (`_molGap`).** `03/04/2026` es 3 de abril o 4 de marzo. Se asume EE. UU. (MM/DD) y esa lectura es la que **dispara**; las demás solo pueden **bajar** severidad, nunca disparar. Si alguna lectura salvaría el umbral, el hallazgo baja de `blocker` a `warning` y lo dice. Así no se avisa sobre un plan correcto solo porque su fecha se pueda leer de dos maneras.
 
+**Diseño vertical de tabla (`_molVerticalSegment`).** Encontrado auditando documentos reales, no sintéticos: los encabezados de esta consulta ponen la etiqueta en un renglón y el valor en el siguiente.
+
+```
+Date Of Report
+
+06/29/2026
+```
+
+Con el corte por renglón, **las seis reglas de fechas estaban mudas** sobre los documentos de verdad, y `MOL_PLAN_DATE_MISSING` era un falso positivo sobre un documento que sí traía la fecha. El valor se busca ahora en el siguiente renglón no vacío, y el discriminador que impide reabrir el bug de abajo es que **un valor suelto no trae etiqueta**: si el renglón contiene `:` es otro campo y se rechaza; si es largo, es un párrafo y no una celda. Asegurado con cuatro casos de no-regresión.
+
 **Bug histórico, no reintroducir:** el `\s*` final del regex de etiqueta se tragaba el salto de línea, con lo que el corte por renglón quedaba sin nada que cortar y `"Date of plan:"` se llevaba la fecha de nacimiento del renglón siguiente — la misma regresión que `classifyTbdContext`. `_molLabeledDate` y `_molLabeledRange` recortan el espacio final del match antes de rebanar.
 
 Reglas: `MOL_PLAN_DATE_MISSING` · `MOL_PLAN_AGE_60D` · `MOL_REAUTH_WINDOW` · `MOL_DX_ASSESSMENT_24M` · `MOL_REASSESS_INTERVAL` · `MOL_PLAN_COVERS_PERIOD`. Categoría `payer_timelines`.
@@ -58,6 +68,14 @@ Para Molina el **CDE** (Comprehensive Diagnostic Evaluation) y el **behavior ass
 - **No concluyentes (`warning` / `notice`).** El documento **no menciona** algo. Eso no prueba que falte en el paquete, igual que en `MOL_PLAN_DATE_MISSING` un encabezado no extraído no prueba que falte la fecha. El hallazgo pide **verificar**, y lo dice con esas palabras.
 
 **Lo que NO está aquí a propósito:** auditar el *contenido* del CDE —sus ocho elementos obligatorios, la observación directa, la firma—. Ese documento no es el que se sube. Cuando se auditen paquetes completos, ese es el bloque siguiente.
+
+**Atribución del diagnóstico (`_cdeClientAsd`), y por qué el bloque puede callarse entero.** El fallo más instructivo de todo el proyecto, encontrado auditando un reassessment real: en 167.000 caracteres la **única** mención de *"Autism Spectrum Disorder"* estaba en la historia familiar —**el padre** de la clienta lo tiene— y `MOL_DSM5_SEVERITY_MISSING` la tomó por suya, pidiéndole un nivel de severidad del TEA a una niña cuyo diagnóstico es TDAH (F90.9) y ODD (F91.3).
+
+> **Comprobar que un diagnóstico APARECE no es comprobar que es SUYO.** Es exactamente el fallo de probabilidad que este proyecto existe para evitar, y lo cometí igual.
+
+El patrón familiar es **estrecho a propósito**: `parent` a secas no sirve, porque *"parent training"* y *"family guidance"* están en cada documento de ABA y dejarían el bloque mudo sobre clientes que sí tienen TEA. Exige atribución a un pariente (`her father`, `family history`, `genetic loading`). Y basta **una** mención fuera de contexto familiar: en el otro documento real el cliente tenía TEA **y sus tres hermanos también**, así que algunas menciones son familiares y otras no, y las suyas son las que cuentan. Un código `F84.x` basta por sí solo, porque en una lista de diagnósticos el código es del cliente.
+
+**Alcance: la política del pagador es específica del TEA.** La MCP 482 se titula *"Applied Behavioral Analysis for Autism Spectrum Disorder"* y la sección del CDE también lo es. Si el diagnóstico de la clienta no es del espectro, **las ocho reglas se callan** y en su lugar sale `MOL_POLICY_SCOPE_NOT_ASD` (`notice`), que dice que hay que verificar qué política rige para ese diagnóstico. Decisión de Rolando. Si el diagnóstico **no se puede determinar**, el bloque corre igual y el aviso no sale: callar sobre lo desconocido esconderia hallazgos reales, y afirmar que la política no aplica sería inventar.
 
 **La guarda que evita el falso positivo caro (`MOL_CDE_DX_FROM_TOOL`).** Molina rechaza que una puntuación haga de diagnóstico: *"A clinician must state the diagnosis explicitly."* Pero *"diagnóstico confirmado por la Dra. Pérez con el ADOS-2"* es **correcto**. La regla exige un verbo de atribución entre instrumento y diagnóstico **y** que en la cláusula no haya ningún indicio de persona o institución (`Dr.`, `PhD`, `psychologist`, `hospital`…). Con clínico presente, calla.
 
@@ -112,6 +130,79 @@ Un total declarado con otro total declarado. Las horas de un código, con la lí
 **Guarda de ambigüedad en `HOURS_CODE_CONFLICT`:** si un código trae más de una línea en el canónico (p. ej. `97155` y `97155 HN`), no se puede saber a cuál se refiere la narrativa, así que **el código se descarta**.
 
 Reglas: `HOURS_TOTAL_CONFLICT` · `HOURS_TOTAL_VS_CPT_SUM` · `HOURS_CODE_CONFLICT`. Categoría `internal_contradiction`. Corre en el bloque de `runAudit` que tiene el canónico, junto a `scanFloridaServiceLimits`.
+
+---
+
+### 1.6 Terminología acotada por rol (`termRoleAt`)
+
+**Decisión clínica de Rolando**, tras auditar dos documentos reales en los que **cinco de siete blockers** eran cuatro palabras:
+
+> *"calm, Frustration, self-regulation, Coping Skills nunca debe aparecer como intervenciones o programas de reemplazo o como adquisición de habilidades. Pero suelen referenciarse en los background de los clientes como algo que menciona la familia y en ese momento no es un problema clínico y pueden ser situaciones reales de la vida cotidiana."*
+
+Es la forma de `classifyTbdContext`: la misma palabra, distinto veredicto según el papel que cumple. Y el eje **no** es clínico / no clínico —eso ya lo hace `sectionContextAt`— sino **programa vs antecedentes**:
+
+| rol | veredicto | por qué |
+|---|---|---|
+| `program` | `blocker` | Escrito como intervención, programa de reemplazo, objetivo de adquisición o **definición operacional**. Ese es el defecto real. |
+| `background` | **no se reporta** | Lo que la familia cuenta de la vida diaria no es un problema clínico. |
+| `instrument` | **no se reporta** | Es el nombre de una escala del instrumento, no una elección del analista. |
+| `unknown` | `warning` | No se puede probar que sea un programa, y afirmarlo con un `blocker` es lo que producía los falsos positivos. |
+
+Solo se aplica a los cuatro términos marcados `roleScoped`. Los demás conceptos fuera del marco ABA (mindfulness, problem solving, yoga) **siguen siendo error en cualquier parte**: son procedimientos, no vocabulario, y Rolando no los puso en discusión.
+
+**La oración pesa más que el encabezado.** Un programa nombrado dentro de los antecedentes sigue siendo un programa, y un *"la madre refiere"* dentro de una sección de metas sigue siendo lo que cuenta la familia. El encabezado es solo el respaldo cuando la oración no dice nada.
+
+**Dos falsos positivos que solo aparecieron con documentos reales:**
+
+1. **La ventana de la "oración" no estaba acotada.** En una tabla del `.docx`/`.pdf` la fila entera cae entre dos saltos, así que una señal de programa en una celda lejana convertía en programa una celda sin relación: un LTO de rutinas diarias hacía `program` a un `calmly` que estaba en otra columna. Hay un **tope duro de 160 caracteres por lado**.
+
+2. **Nombres propios de escalas.** `Relational Frustration` es una escala del **BASC-3 PRQ** y `Coping Skills` un subdominio del **Vineland-3** (bajo Socialización). Van a aparecer en *todos* los assessments de esta consulta. `TERM_SCALE_NAME` más `TERM_SCORE_NEIGHBORHOOD` (dominios hermanos y valores de rango) los identifican, y se comprueban **después** de `program` para que `"Replacement program: Coping Skills"` siga siendo `blocker`. La causa raíz no era la oración sino **el respaldo por encabezado**, que en una tabla de puntuaciones encontraba antes una palabra de programa que una de antecedentes.
+
+**El hallazgo no solo señala: dice dónde está la redacción observable.** Rolando, sobre un caso real:
+
+> *"si lo escribió en el procedimiento lo recomendable es ponerlo en la definición y evitar ambigüedades, es decir que el auditor debe hacer esta sugerencia. He notado mucho que los analistas se complican a la hora de señalar el nombre del programa de reemplazo y usan definiciones con palabras comprometidas y que desbaratan su trabajo clínico."*
+
+El patrón, tal cual apareció en un assessment:
+
+```
+N03 Sits and Waits Appropriately During Transitions
+Definition: The ability to sit CALMLY and wait during transitions...
+Procedure: the RBT will model appropriate sitting and waiting behaviors
+           (e.g., SITTING QUIETLY WITH HANDS IN LAP)
+```
+
+El analista **ya sabe** qué significa "calmly" en conducta observable: lo escribió en el procedimiento y dejó la etiqueta en la definición. Así que `_termProgramEntry` acota la entrada del programa y `_termObservableElsewhere` busca ahí la redacción observable. Tres desenlaces:
+
+| caso | qué dice el hallazgo |
+|---|---|
+| la redacción observable está **en otra parte de la entrada** | la cita textual y dice *súbela a la definición*; `suggestedRewrite` = `Definition: <esa redacción>` |
+| está **en la misma frase** que la etiqueta | la palabra es **redundante**: bórrala y no hay nada más que reescribir |
+| no está en ninguna parte | da el patrón **antecedente → respuesta observable → criterio** y una plantilla |
+
+Y el mensaje dice explícitamente que **el objetivo suele ser legítimo y medible**, y que lo que lo compromete es la etiqueta. Importa: si el hallazgo da a entender que la meta está mal, el analista la borra en vez de reescribirla, y eso sí desbarata el trabajo clínico.
+
+**Dos detalles de implementación que costaron:**
+
+- **La extracción de PDF parte la ligadura `fi`**, así que `Definition:` llega como `De fi nition:`. Sin tolerarlo, el límite de la entrada nunca se encuentra. `TERM_ENTRY_MARK` lo admite.
+- **Una reescritura mal formada es peor que ninguna**, porque el generador de documento corregido la escribiría tal cual en un documento clínico. Quitar `calm` de *"Jade is calm and has stopped crying"* dejaba *"Jade **is has** stopped"*. `_termDropLabel` prueba las formas conocidas —incluida `is <etiqueta> and`, donde el verbo siguiente carga la frase— y **valida el resultado**: doble auxiliar, artículo colgando o cópula al aire ⇒ devuelve `null` y no se sugiere nada. La cópula colgante (`"The client is calm"` → `"The client is"`) se colaba y la atrapó una prueba propia.
+
+**Exención previa que no se tocó:** `isExempted` ya suprimía cualquier término citado directamente como reporte del cuidador (`"mother reported …"`), para **todos** los términos y no solo estos cuatro. `termRoleAt` es más amplio y consciente de la sección, pero no sustituye a aquélla.
+
+---
+
+### 1.7 Agregación: una tarjeta por problema, no una por aparición
+
+Los dos casos salieron de auditar documentos reales, y los dos son la misma lección: **dos tarjetas para un mismo defecto es lo que hace que un analista deje de leer el panel.**
+
+**`scanProhibitedInterventions`** hacía `matches.slice(0,2)` y empujaba **dos tarjetas idénticas** a propósito. Sobre los dos documentos reales `"Planned Ignoring"` salía duplicado. Ahora se recogen todas las apariciones de una intervención —en los dos idiomas y todas sus variantes—, se emite **una** tarjeta anclada en la primera, y la descripción dice cuántas veces aparece y con qué grafías, para que el analista las encuentre todas.
+
+**`scanSTOIntegrity`** deduplicaba por el texto coincidente, así que `«STO#2: STO#1:»`, `«STO#3: STO#1:»` y `«STO#4: STO#1:»` contaban como problemas distintos: sobre una reevaluación real salieron **nueve tarjetas para un único defecto de copiado**. Ahora se agrega por regla y sale una, con la cuenta y hasta ocho etiquetas concretas listadas.
+
+**Efecto secundario que conviene conocer:** la deduplicación vieja no solo inflaba unas reglas, también **escondía** otras. `STO_DUP_MEASURE` mostraba una tarjeta porque las repeticiones coincidían en el texto; agregada, revela que son **once** cláusulas de medición repetidas. Misma tarjeta, cuenta correcta.
+
+Los topes de seguridad pasaron de contar *tarjetas* a contar *apariciones* (`cubos.<regla>.n >= 60`), que es lo que ahora crece.
+
+Las tres reglas de STO se agregan por separado, así que un documento con los tres defectos sigue recibiendo tres tarjetas, una por defecto.
 
 ---
 

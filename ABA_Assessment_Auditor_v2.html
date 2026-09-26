@@ -652,19 +652,19 @@ const uid=()=>'c'+Date.now()+Math.random().toString(36).slice(2,6);
 const PROHIBITED_TERMS=[
   {id:'TERM_STRESS',severity:'warning',category:'emotional_state',variants:{en:['stress','stressed','stressful','stressing'],es:['estrés','estresado','estresada','estresante']},rationale:'Según el BACB Ethics Code 2020 y el Task List: la documentación clínica debe referirse a la topografía de la conducta de forma observable y medible. Use descriptores fisiológicos o conductuales (e.g., "exhibited increased motor activity, rapid breathing, elevated vocal output"). Aceptable como etiqueta médica/diagnóstica en secciones de antecedentes.',rationale_en:'Per BACB Ethics Code 2020 and Task List: clinical documentation must reference observable, measurable behavior topography. Use physiological or behavioral descriptors (e.g., "exhibited increased motor activity, rapid breathing, elevated vocal output"). Acceptable as a medical/diagnostic label in background sections.'},
   {id:'TERM_ANXIETY',severity:'warning',category:'emotional_state',variants:{en:['anxiety','anxious','anxiously'],es:['ansiedad','ansioso','ansiosa']},rationale:'Según los estándares de documentación del BACB: no usar como explicación clínica de la conducta. Aceptable al citar un diagnóstico DSM-5 o ICD-10 en la sección de antecedentes o historia médica de una evaluación.',rationale_en:'Per BACB documentation standards: do not use as a clinical explanation for behavior. Acceptable when citing a DSM-5 or ICD-10 diagnosis in the background or medical history section of an assessment.'},
-  {id:'TERM_CALM',severity:'blocker',category:'emotional_state',variants:{en:['calm','calmly','calmed','calms','calming'],es:['calma','calmar','calmado','calmada','tranquilo','tranquila','tranquilizar']},rationale:'Según el BACB Ethics Code 2020 y la Florida Medicaid Coverage Policy: las descripciones de conducta en la documentación clínica deben ser observables y medibles. Describa las conductas observables específicas (e.g., "ceased ongoing activity, lowered vocal volume, reduced motor movement").',rationale_en:'Per BACB Ethics Code 2020 and Florida Medicaid Coverage Policy: behavior descriptions in clinical documentation must be observable and measurable. Describe the specific observable behaviors instead (e.g., "ceased ongoing activity, lowered vocal volume, reduced motor movement").'},
-  {id:'TERM_FRUSTRATION',severity:'blocker',category:'emotional_state',variants:{en:['frustration','frustrated','frustrate','frustrating'],es:['frustración','frustrado','frustrada','frustrante']},rationale:'Según el BACB Task List (E-1, G-1) y las CASP ABA Practice Guidelines 3rd Ed. (2024): la documentación de conducta debe incluir topografía observable, no estados emocionales inferidos. Describa los indicadores conductuales específicos.',rationale_en:'Per BACB Task List (E-1, G-1) and CASP ABA Practice Guidelines 3rd Ed. (2024): behavior documentation must include observable topography, not inferred emotional states. Describe the specific behavioral indicators.'},
+  {id:'TERM_CALM',severity:'blocker',roleScoped:true,category:'emotional_state',variants:{en:['calm','calmly','calmed','calms','calming'],es:['calma','calmar','calmado','calmada','tranquilo','tranquila','tranquilizar']},rationale:'Según el BACB Ethics Code 2020 y la Florida Medicaid Coverage Policy: las descripciones de conducta en la documentación clínica deben ser observables y medibles. Describa las conductas observables específicas (e.g., "ceased ongoing activity, lowered vocal volume, reduced motor movement").',rationale_en:'Per BACB Ethics Code 2020 and Florida Medicaid Coverage Policy: behavior descriptions in clinical documentation must be observable and measurable. Describe the specific observable behaviors instead (e.g., "ceased ongoing activity, lowered vocal volume, reduced motor movement").'},
+  {id:'TERM_FRUSTRATION',severity:'blocker',roleScoped:true,category:'emotional_state',variants:{en:['frustration','frustrated','frustrate','frustrating'],es:['frustración','frustrado','frustrada','frustrante']},rationale:'Según el BACB Task List (E-1, G-1) y las CASP ABA Practice Guidelines 3rd Ed. (2024): la documentación de conducta debe incluir topografía observable, no estados emocionales inferidos. Describa los indicadores conductuales específicos.',rationale_en:'Per BACB Task List (E-1, G-1) and CASP ABA Practice Guidelines 3rd Ed. (2024): behavior documentation must include observable topography, not inferred emotional states. Describe the specific behavioral indicators.'},
   {id:'TERM_OVERWHELMED',severity:'warning',category:'emotional_state',variants:{en:['overwhelm','overwhelmed','overwhelming'],es:['abrumar','abrumado','abrumada','abrumador']},rationale:'Según los estándares de documentación del BACB: no es aceptable como explicación clínica de la conducta. El impacto funcional observable en el cuidador (e.g., "increased caregiving demands") es aceptable en una sección de impacto familiar.',rationale_en:'Per BACB documentation standards: not acceptable as a clinical explanation for behavior. Observable functional impact on the caregiver (e.g., "increased caregiving demands") is acceptable in a family impact section.'},
   {id:'TERM_UPSET',severity:'blocker',category:'emotional_state',variants:{en:['upset'],es:['alterado','alterada','molesto','molesta']},rationale:'Según los requisitos de documentación del BACB y las CASP ABA Practice Guidelines 3rd Ed. (2024): la documentación clínica debe referirse a conducta observable, no a estados internos inferidos.',rationale_en:'Per BACB documentation requirements and CASP ABA Practice Guidelines 3rd Ed. (2024): clinical documentation must reference observable behavior, not inferred internal states.'},
   {id:'TERM_ANGER',severity:'blocker',category:'emotional_state',variants:{en:['anger','angry','angrily'],es:['enojo','ira','enojado','enojada']},rationale:'Según el BACB Task List: la documentación conductual es más efectiva cuando describe topografía observable. Considere especificar lo que se observó (acciones, vocalizaciones, movimientos) en lugar de nombrar un estado interno.',rationale_en:'Per BACB Task List: behavioral documentation is most effective when it describes observable topography. Consider specifying what was seen (actions, vocalizations, movements) rather than naming an internal state.'},
   {id:'TERM_FEELINGS',severity:'warning',category:'emotional_state',variants:{en:['feelings','emotions','emotional'],es:['sentimientos','emociones','emocional']},rationale:'Según los estándares de documentación del BACB: evitar como descriptor clínico principal. Aceptable únicamente al documentar lo que cuidadores o maestros reportaron textualmente.',rationale_en:'Per BACB documentation standards: avoid as primary clinical descriptor. Acceptable only when documenting what caregivers or teachers directly reported verbatim.'},
   {id:'TERM_PROBLEM_SOLVING',severity:'blocker',category:'prohibited_concept',variants:{en:['problem solving','problem-solving'],es:['resolución de problemas']},rationale:'Según el BACB Ethics Code 2020 Sección 3.01 (selección de tratamiento basada en evidencia) y las CASP ABA Practice Guidelines 3rd Ed. (2024): este procedimiento no es una intervención ABA basada en evidencia y no está autorizado bajo la cobertura de Florida Medicaid Behavior Analysis Services. Elimínelo del plan.',rationale_en:'Per BACB Ethics Code 2020 Section 3.01 (evidence-based treatment selection) and CASP ABA Practice Guidelines 3rd Ed. (2024): this procedure is not an evidence-based ABA intervention and is not authorized under Florida Medicaid Behavior Analysis Services coverage. Remove from the plan.'},
-  {id:'TERM_SELF_REGULATION',severity:'blocker',category:'prohibited_concept',variants:{en:['self-regulation','self regulation','self-regulate','self-regulating'],es:['autorregulación','auto-regulación','autorregularse']},rationale:'No es una intervención ABA autorizada.',rationale_en:'Not an authorized ABA intervention.'},
+  {id:'TERM_SELF_REGULATION',severity:'blocker',roleScoped:true,category:'prohibited_concept',variants:{en:['self-regulation','self regulation','self-regulate','self-regulating'],es:['autorregulación','auto-regulación','autorregularse']},rationale:'No es una intervención ABA autorizada.',rationale_en:'Not an authorized ABA intervention.'},
   {id:'TERM_SELF_SOOTHING',severity:'blocker',category:'prohibited_concept',variants:{en:['self-soothing','self-soothe','soothe','soothed','soothing'],es:['auto-consuelo','autoconsolarse','calmarse']},rationale:'No es una intervención ABA autorizada.',rationale_en:'Not an authorized ABA intervention.'},
   {id:'TERM_CONFLICT_RES',severity:'blocker',category:'prohibited_concept',variants:{en:['conflict resolution'],es:['resolución de conflictos']},rationale:'No es una intervención ABA autorizada.',rationale_en:'Not an authorized ABA intervention.'},
   {id:'TERM_MINDFULNESS',severity:'blocker',category:'prohibited_concept',variants:{en:['mindfulness','mindful','meditation','meditate'],es:['atención plena','mindfulness','meditación','meditar']},rationale:'No es una intervención ABA autorizada.',rationale_en:'Not an authorized ABA intervention.'},
   {id:'TERM_YOGA',severity:'blocker',category:'prohibited_concept',variants:{en:['yoga'],es:['yoga']},rationale:'No es una intervención ABA autorizada.',rationale_en:'Not an authorized ABA intervention.'},
-  {id:'TERM_COPING',severity:'blocker',category:'prohibited_concept',variants:{en:['coping strategy','coping strategies','coping skill','coping skills'],es:['estrategia de afrontamiento','estrategias de afrontamiento','habilidades de afrontamiento']},rationale:'No es una intervención ABA autorizada.',rationale_en:'Not an authorized ABA intervention.'},
+  {id:'TERM_COPING',severity:'blocker',roleScoped:true,category:'prohibited_concept',variants:{en:['coping strategy','coping strategies','coping skill','coping skills'],es:['estrategia de afrontamiento','estrategias de afrontamiento','habilidades de afrontamiento']},rationale:'No es una intervención ABA autorizada.',rationale_en:'Not an authorized ABA intervention.'},
   {id:'TERM_DEALING_FEELINGS',severity:'blocker',category:'prohibited_concept',variants:{en:['dealing with feelings','dealing with emotions'],es:['lidiar con sentimientos','manejar emociones']},rationale:'Según el BACB Ethics Code 2020 Sección 3.01 y las CASP ABA Practice Guidelines 3rd Ed. (2024): este procedimiento queda fuera del marco ABA cubierto por Florida Medicaid. Considere reemplazarlo por una alternativa analítico-conductual (e.g., DRA, FCT, modificación de antecedentes).',rationale_en:'Per BACB Ethics Code 2020 Section 3.01 and CASP ABA Practice Guidelines 3rd Ed. (2024): this procedure falls outside the ABA framework covered by Florida Medicaid. Consider replacing with a behavior-analytic alternative (e.g., DRA, FCT, antecedent modification).'},
   {id:'TERM_EMPATHY',severity:'warning',category:'prohibited_concept',variants:{en:['empathy training','teaching empathy'],es:['entrenamiento en empatía','enseñar empatía']},rationale:'Según las CASP ABA Practice Guidelines 3rd Ed. (2024): la documentación es más clara cuando usa terminología ABA establecida. Considere usar términos basados en la función como DRA, FCT, modificación de antecedentes o procedimientos basados en reforzamiento.',rationale_en:'Per CASP ABA Practice Guidelines 3rd Ed. (2024): documentation is clearest when it uses established ABA terminology. Consider using function-based terms like DRA, FCT, antecedent modification, or reinforcement-based procedures.'},
   {id:'TERM_TRIUMPH',severity:'warning',category:'language_style',variants:{en:['amazingly','wonderfully','incredibly','perfectly','flawlessly','outstandingly','remarkable progress','exceptional progress','tremendous progress','great strides','phenomenal','commendable','impressive performance'],es:['asombrosamente','maravillosamente','increíblemente','perfectamente','progreso notable','progreso excepcional','progreso fenomenal']},rationale:'Según los estándares de documentación del BACB: el lenguaje preciso y medible sirve mejor al documento al momento de la autorización que los adjetivos evaluativos. Considere describir el cambio observado específico en términos conductuales.',rationale_en:'Per BACB documentation standards: precise, measurable language serves the document better at authorization time than evaluative adjectives. Consider describing the specific observed change in behavioral terms.'},
@@ -723,43 +723,43 @@ const PLACEHOLDER_PATTERNS=[
   {regex:/\.\.\.+/g,description:'Possible ellipsis placeholder',severity:'notice'}
 ];
 
-/* ââ TBD / TBA: convenciÃ³n vÃ¡lida SOLO en fechas de servicio âââââââ
-   "TBD"/"TBA" es la convenciÃ³n con la que el analista marca fechas que
-   todavÃ­a no estÃ¡n definidas porque dependen de la autorizaciÃ³n o del
-   servicio en ejecuciÃ³n: inicio de servicios, perÃ­odo de autorizaciÃ³n,
-   prÃ³xima revisiÃ³n, alta, firma. Marcarlas como blockers producÃ­a decenas
-   de hallazgos invÃ¡lidos que hundÃ­an el score.
+/* ââ TBD / TBA: convención válida SOLO en fechas de servicio âââââââ
+   "TBD"/"TBA" es la convención con la que el analista marca fechas que
+   todavía no están definidas porque dependen de la autorización o del
+   servicio en ejecución: inicio de servicios, período de autorización,
+   próxima revisión, alta, firma. Marcarlas como blockers producía decenas
+   de hallazgos inválidos que hundían el score.
 
    PERO la Florida Medicaid Behavior Analysis Services Coverage Policy
-   (diciembre 2024, Â§6.2.2, incorporada por referencia en la Regla
+   (diciembre 2024, §6.2.2, incorporada por referencia en la Regla
    59G-4.125) enumera nueve elementos que CADA target, goal u objective
    debe contener â entre ellos "Date of introduction", "Estimated date of
    mastery" y "Current level (baseline)". La norma pide una fecha
-   *estimada*: precisamente porque no exige certeza, un "TBD" ahÃ­ es un
-   elemento requerido faltante y motivo de denegaciÃ³n. Esos campos se
+   *estimada*: precisamente porque no exige certeza, un "TBD" ahí es un
+   elemento requerido faltante y motivo de denegación. Esos campos se
    marcan, aunque la palabra "date" aparezca en su etiqueta. */
 const TBD_DATE_CONTEXT=/(start\s+date|service\s+date|date\s+of\s+service|begin|onset|initiat|effective\s+date|end\s+date|expir|renew|next\s+review|review\s+date|reevaluat|re-evaluat|reassessment\s+date|authorization|auth\.|authoriz|service\s+period|period\s+of\s+service|deadline|due\b|pending|in\s+progress|ongoing|currently|upon\s+(approval|authorization|receipt)|tentative|follow[-\s]?up|signature|signed|admission|discharge\s+date|fecha\s+de\s+(inicio|servicio|alta)|per\xc3\xadodo\s+de\s+autorizaci\xc3\xb3n|\d{1,2}\s*\/\s*\d{1,2}\s*\/\s*\d{2,4}|_{2,}\s*\/\s*_{2,})/i;
-// Florida Medicaid Â§6.2.2: elementos requeridos por cada meta u objetivo.
+// Florida Medicaid §6.2.2: elementos requeridos por cada meta u objetivo.
 // Nunca pueden quedar "por determinar", ni siquiera en una conducta nueva.
 const TBD_REQUIRED_FIELD=/(date\s+of\s+introduction|fecha\s+de\s+introducci\xc3\xb3n|estimated\s+date\s+of\s+mastery|date\s+of\s+mastery|mastery\s+date|fecha\s+(estimada\s+)?de\s+dominio|mastery\s+criteri|criterio\s+de\s+dominio|current\s+level|baseline|l\xc3\xadnea\s+base|linea\s+base|nivel\s+actual|measurement\s+procedure|observation\s+and\s+measurement|procedimiento\s+de\s+medici\xc3\xb3n|plan\s+for\s+generalization|generalization\s+plan|plan\s+de\s+generalizaci\xc3\xb3n|conditions?\s+under\s+which|acquisition\s+procedure|reduction\s+procedure)/i;
-// Identidad del cliente y lÃ³gica clÃ­nica del plan: nunca indefinidos.
+// Identidad del cliente y lógica clínica del plan: nunca indefinidos.
 const TBD_NEVER_VALID=/(function\s+of\s+(the\s+)?behavior|hypothesi[sz]ed\s+function|functional\s+hypothesis|function\s*[:=]|operational\s+definition|client\s+name|patient\s+name|date\s+of\s+birth|\bdob\b|diagnos|icd-?10|dsm-?5)/i;
 
-// 'date' = convenciÃ³n vÃ¡lida, no se marca.
-// 'required_field' = elemento exigido por FL Medicaid Â§6.2.2, blocker con cita.
-// 'invalid' = placeholder sin completar, blocker genÃ©rico.
+// 'date' = convención válida, no se marca.
+// 'required_field' = elemento exigido por FL Medicaid §6.2.2, blocker con cita.
+// 'invalid' = placeholder sin completar, blocker genérico.
 function classifyTbdContext(text,index,matchLen){
-  // Ventana estrecha = la ETIQUETA que precede al TBD, sin invadir la lÃ­nea u
-  // oraciÃ³n anterior (si no, "Date of birth: ..." de la lÃ­nea de arriba
-  // marcaba como invÃ¡lido un "Start date: TBD" legÃ­timo).
+  // Ventana estrecha = la ETIQUETA que precede al TBD, sin invadir la línea u
+  // oración anterior (si no, "Date of birth: ..." de la línea de arriba
+  // marcaba como inválido un "Start date: TBD" legítimo).
   let tight=text.slice(Math.max(0,index-70),index);
   const cutLine=Math.max(tight.lastIndexOf('\n'),tight.lastIndexOf('\r'),tight.lastIndexOf('. '),tight.lastIndexOf('\t'),tight.lastIndexOf('|'));
   if(cutLine!==-1)tight=tight.slice(cutLine+1);
   tight+=' '+text.slice(index+matchLen,Math.min(text.length,index+matchLen+15));
   if(TBD_NEVER_VALID.test(tight))return 'invalid';
   if(TBD_REQUIRED_FIELD.test(tight))return 'required_field';
-  // Ventana amplia = el pÃ¡rrafo/bloque (cabeceras de tabla, encabezado de la
-  // secciÃ³n), sin cruzar a un pÃ¡rrafo distinto.
+  // Ventana amplia = el párrafo/bloque (cabeceras de tabla, encabezado de la
+  // sección), sin cruzar a un párrafo distinto.
   let before=text.slice(Math.max(0,index-160),index);
   const cutPara=before.lastIndexOf('\n\n');
   if(cutPara!==-1)before=before.slice(cutPara+2);
@@ -767,7 +767,7 @@ function classifyTbdContext(text,index,matchLen){
   const cutAfter=after.indexOf('\n\n');
   if(cutAfter!==-1)after=after.slice(0,cutAfter);
   const around=before+' '+after;
-  // Segunda pasada para tablas de metas, donde la etiqueta estÃ¡ en la fila de
+  // Segunda pasada para tablas de metas, donde la etiqueta está en la fila de
   // cabecera: un TBD dentro de un bloque de meta es un elemento faltante antes
   // que una fecha de servicio.
   if(TBD_REQUIRED_FIELD.test(around))return 'required_field';
@@ -2175,6 +2175,192 @@ function sectionContextAt(text, position){
   return clinicalIdx>=nonClinicalIdx ? 'clinical' : 'nonclinical';
 }
 
+/* ── Rol de un termino: ¿programa o antecedentes? ─────────────────────────
+   Decision clinica de Rolando, tomada tras auditar dos documentos reales en
+   los que CINCO de siete blockers eran estas cuatro palabras:
+
+     "calm, Frustration, self-regulation, Coping Skills nunca debe aparecer
+      como intervenciones o programas de reemplazo o como adquisicion de
+      habilidades. Pero suelen referenciarse en los background de los clientes
+      como algo que menciona la familia y en ese momento no es un problema
+      clinico y pueden ser situaciones reales de la vida cotidiana."
+
+   Es la forma de classifyTbdContext: la misma palabra, distinto veredicto
+   segun el papel que cumple. Y el eje NO es clinico / no clinico -- eso ya lo
+   hace sectionContextAt -- sino PROGRAMA vs ANTECEDENTES:
+
+     program    -> blocker. Escrito como intervencion, programa de reemplazo,
+                   meta u objetivo de adquisicion. Ese es el defecto real.
+     background -> NO se reporta. Lo que la familia cuenta de la vida diaria
+                   no es un problema clinico.
+     unknown    -> warning, nunca blocker. No se puede probar que sea un
+                   programa, y afirmarlo con un blocker es lo que producia los
+                   falsos positivos sobre documentos correctos.
+
+   Solo se aplica a los terminos marcados roleScoped. Los demas conceptos
+   fuera del marco ABA (mindfulness, problem solving) siguen siendo errores en
+   cualquier parte: son procedimientos, no vocabulario, y Rolando no los puso
+   en discusion. */
+const TERM_ROLE_PROGRAM_HEADING=['intervention','treatment protocol','replacement behavior','replacement program','skill acquisition','acquisition program','goals','objectives','short-term objective','long-term goal','target behavior','behavior reduction','behavior intervention plan','treatment plan','programs','teaching','curriculum','metas','objetivos','intervenciones','programas','plan de tratamiento'];
+const TERM_ROLE_BACKGROUND_HEADING=['background','background information','developmental history','medical history','social history','family history','history','presenting concerns','reason for referral','referral','parent interview','caregiver interview','clinical interview','informant','strengths','antecedentes','historia','motivo de consulta','entrevista'];
+// La ORACION pesa mas que el encabezado: un programa nombrado dentro de los
+// antecedentes sigue siendo un programa, y un "la madre refiere" dentro de una
+// seccion clinica sigue siendo lo que cuenta la familia.
+const TERM_ROLE_PROGRAM_SENT=/\b(?:intervention|replacement\s+(?:behavio\w*|program|skill)|skill\s+acquisition|acquisition|treatment\s+protocol|protocol|programs?|programming|goal|objective|STO\s*#?\s*\d|LTO\s*#?\s*\d|short[-\s]term\s+objective|long[-\s]term\s+(?:goal|objective)|target(?:s|ed|ing)?|will\s+(?:learn|be\s+taught|acquire|demonstrate|independently|engage|use)|teach(?:es|ing)?|training|mastery|criteri(?:on|a)|curriculum|prompt\s+hierarchy|DR[AOI]\b|reinforce\w*|trials?|meta\b|objetivo|programa|adquisici[oó]n|ense[ñn]ar|entrenar|definitions?|definici[oó]n)\b/i;
+const TERM_ROLE_BACKGROUND_SENT=/\b(?:(?:mother|father|parent|parents|caregiver|guardian|grandmother|grandfather|family|informant|teacher|staff)\s+(?:reported?|reports?|stated?|states?|described?|describes?|indicated?|noted?|shared?|expressed?|observed?)|(?:according\s+to|per)\s+(?:the\s+|his\s+|her\s+)?(?:mother|father|parent|parents|caregiver|guardian|family|report|interview|records?)|reportedly|as\s+reported|historically|at\s+intake|prior\s+to\s+services|la\s+(?:madre|familia|maestra)\s+(?:refiere|report[oó]|indic[oó]|describe)|seg[uú]n\s+(?:la\s+|el\s+)?(?:madre|padre|familia))\b/i;
+
+/* La oracion que contiene la posicion. Se corta en los mismos limites que el
+   resto del auditor, incluidos tabulador y barra vertical, porque la
+   extraccion de .docx convierte las celdas de tabla en eso. */
+function _termSentence(text,position,len){
+  // Tope duro por lado: en una tabla, la fila entera cae entre dos saltos y sin
+  // tope una senal de programa en una celda lejana contamina otra celda sin
+  // relacion. Encontrado en un PDF real, donde un LTO de rutinas diarias hacia
+  // "programa" a un "calmly" que estaba en otra columna.
+  const TOPE=160;
+  let a=position,b=position+len;
+  const min=Math.max(0,position-TOPE), max=Math.min(text.length,position+len+TOPE);
+  while(a>min&&!/[.;!?\n\r\t|]/.test(text[a-1]))a--;
+  while(b<max&&!/[.;!?\n\r\t|]/.test(text[b]))b++;
+  return text.slice(a,b);
+}
+// Reporte de un instrumento: "Frustration" es una subescala del BASC-3 PRQ, y
+// ahi la palabra es la etiqueta de la escala, no una eleccion del analista.
+const TERM_ROLE_INSTRUMENT=/\b(?:BASC(?:-3)?|\bPRQ\b|Vineland(?:-3|-II)?|SRS(?:-2)?|CARS(?:-2)?|ADOS(?:-2)?|ABAS|ABLLS(?:-R)?|VB-?MAPP|Conners|CBCL|T-?scores?|standard\s+scores?|percentiles?|scaled\s+scores?|sub-?scales?|\bscales?\b|\bindex\b|composite|domain\s+scores?|clinical\s+scales?|adaptive\s+scales?)\b/i;
+
+/* ── La version observable que el analista YA escribio ────────────────────
+   Patron real, visto en un assessment de la consulta:
+
+     N03 Sits and Waits Appropriately During Transitions
+     Definition: The ability to sit CALMLY and wait during transitions...
+     Procedure: the RBT will model appropriate sitting and waiting behaviors
+                (e.g., SITTING QUIETLY WITH HANDS IN LAP)
+
+   El analista sabe perfectamente que significa "calmly" en conducta
+   observable: lo escribio en el procedimiento y dejo la etiqueta en la
+   definicion. Rolando: "si lo escribio en el procedimiento lo recomendable es
+   ponerlo en la definicion y evitar ambiguedades, es decir que el auditor debe
+   hacer esta sugerencia. He notado mucho que los analistas se complican a la
+   hora de senalar el nombre del programa de reemplazo y usan definiciones con
+   palabras comprometidas y que desbaratan su trabajo clinico."
+
+   Asi que el hallazgo no se limita a senalar la palabra: busca en la MISMA
+   entrada del programa una redaccion observable y le dice donde esta. */
+
+// Marcadores que abren una entrada de programa. La extraccion de PDF parte la
+// ligadura "fi", asi que "Definition" llega como "De fi nition": hay que
+// tolerarlo o el limite de la entrada nunca se encuentra.
+const TERM_ENTRY_MARK=/(?:\b[A-Z]{1,3}\s?\d{1,3}\b(?=\s+[A-Z])|\bDe\s?fi\s?nition\s*:|\bDefinici[oó]n\s*:|\bTarget\s+Behaviou?r\s*:|\bReplacement\s+(?:Behaviou?r|Program|Skill)\s*:|\bProgram\s*:|\bProcedure\s*:|\bBarrier\s*:|\bSTO\s*#?\s*\d+|\bLTO\s*:)/g;
+// Redaccion observable: topografia, ausencia contable o una dimension medible.
+const TERM_OBSERVABLE_ANCHOR=/(?:hands?\s+(?:in|on)\s+(?:his\s+|her\s+|their\s+|the\s+)?(?:lap|table|desk)|feet\s+on\s+the\s+floor|remain(?:s|ing)?\s+(?:seated|in\s+(?:his|her|their)\s+seat)|stay(?:s|ing)?\s+seated|sit(?:s|ting)?\s+quietly|quiet\s+voice|conversational\s+volume|lower(?:s|ed|ing)?\s+(?:vocal\s+)?volume|without\s+(?:leaving|getting\s+up|vocaliz\w*|scream\w*|cry\w*|hitting|throwing)|does\s+not\s+(?:leave|get\s+up|scream|cry|hit|throw)|stop(?:s|ped)?\s+(?:crying|screaming)|for\s+at\s+least\s+\d+\s*(?:second|minute)|within\s+\d+\s*(?:second|minute)|body\s+oriented|zero\s+(?:instances|occurrences))/i;
+
+/* La entrada de programa que contiene la posicion: del marcador anterior al
+   siguiente, con tope. */
+function _termProgramEntry(text,position){
+  const desde=Math.max(0,position-1200), hasta=Math.min(text.length,position+1600);
+  const trozo=text.slice(desde,hasta);
+  const rel=position-desde;
+  const re=new RegExp(TERM_ENTRY_MARK.source,'g');
+  let ini=0,fin=trozo.length,m;
+  while((m=re.exec(trozo))!==null){
+    if(m.index<=rel)ini=m.index;
+    else {fin=m.index;break;}
+  }
+  // El siguiente marcador puede abrir una subseccion de la MISMA entrada
+  // (Barrier, Procedure): en ese caso la entrada sigue, no termina.
+  const resto=trozo.slice(fin,fin+40);
+  if(/^(?:\s*(?:Barrier|Procedure|De\s?fi\s?nition|Teaching)\b)/i.test(resto)){
+    const re2=new RegExp(TERM_ENTRY_MARK.source,'g');
+    re2.lastIndex=fin+1;
+    let m2, nuevoFin=trozo.length;
+    while((m2=re2.exec(trozo))!==null){
+      if(/^(?:Barrier|Procedure|De\s?fi\s?nition|Teaching)/i.test(m2[0]))continue;
+      nuevoFin=m2.index;break;
+    }
+    fin=nuevoFin;
+  }
+  return {texto:trozo.slice(ini,fin), offset:desde+ini};
+}
+
+/* Busca en la entrada una redaccion observable que NO sea la clausula donde
+   esta la palabra comprometida, y devuelve esa clausula recortada. */
+function _termObservableElsewhere(entry,posEnEntrada,len){
+  const propia=_termSentence(entry,posEnEntrada,len);
+  const partes=entry.split(/(?:[.;](?=\s|$))|[\n\r]|\t|\|/);
+  for(const parte of partes){
+    const t=parte.trim();
+    if(t.length<12)continue;
+    if(propia.indexOf(t)!==-1||t.indexOf(propia.trim())!==-1)continue;  // es la misma
+    if(!TERM_OBSERVABLE_ANCHOR.test(t))continue;
+    // Se prefiere el trozo entre parentesis, que es donde suele ir el "e.g.".
+    const par=t.match(/\(([^)]{10,160})\)/);
+    const elegido=(par&&TERM_OBSERVABLE_ANCHOR.test(par[1]))?par[1]:t;
+    return elegido.replace(/\s+/g,' ').replace(/^e\.?g\.?,?\s*/i,'').slice(0,180);
+  }
+  return null;
+}
+
+/* Quita la etiqueta redundante de una frase SIN romper la gramatica. Generar
+   ingles correcto con regex es fragil, y una reescritura mal formada es peor
+   que ninguna: el generador de documento corregido la escribiria tal cual en
+   un documento clinico. Asi que se prueban las formas conocidas y, si el
+   resultado no pasa la validacion, se devuelve null y no se sugiere nada. */
+function _termDropLabel(frase,label){
+  const L=escapeRegex(label);
+  const intentos=[
+    // "...Jade is calm and has stopped crying..." -> el verbo siguiente carga
+    new RegExp('\\b(?:is|was|are|were|be|being|been|remains?|remained|becomes?|became|stays?|stayed|appears?|appeared|seems?|seemed)\\s+'+L+'\\s+and\\s+','i'),
+    new RegExp('\\b'+L+'\\s+and\\s+','i'),
+    new RegExp('\\s*\\band\\s+'+L+'\\b','i'),
+    new RegExp('\\s*\\b'+L+'\\b','i')
+  ];
+  for(const re of intentos){
+    if(!re.test(frase))continue;
+    const out=frase.replace(re,re.source.indexOf('and\\s+')>0?'':' ').replace(/\s+/g,' ')
+                   .replace(/\s+([,.;])/g,'$1').trim();
+    // Validacion: dos auxiliares seguidos, un articulo colgando o una
+    // preposicion al aire significan que el recorte rompio la frase.
+    if(/\b(?:is|was|are|were|has|have|had)\s+(?:is|was|are|were|has|have|had)\b/i.test(out))continue;
+    if(/\b(?:the|a|an|and|or|of|to|with|in|for)\s*$/i.test(out))continue;
+    // Copula colgando: "The client is calm" -> "The client is" no es una frase.
+    if(/\b(?:is|was|are|were|be|been|being|remains?|remained|becomes?|became|stays?|stayed|appears?|appeared|seems?|seemed)\s*[.,;]?\s*$/i.test(out))continue;
+    if(/\b(?:is|was|are|were)\s+(?:stopped|ceased|remained)\b/i.test(out))continue;
+    if(out.length<12)continue;
+    return out;
+  }
+  return null;
+}
+
+/* Nombres PROPIOS de escalas y subdominios. Apareceran en todos los
+   assessments de esta consulta: "Coping Skills" es un subdominio del Vineland-3
+   (bajo Socializacion) y "Relational Frustration" una escala del BASC-3 PRQ.
+   Ahi la palabra es la etiqueta del instrumento, no una eleccion del analista.
+   Se comprueba DESPUES de programa, para que "Replacement program: Coping
+   Skills" siga siendo blocker. */
+const TERM_SCALE_NAME=/\b(?:relational\s+frustration|coping\s+skills|self[-\s]?regulation\s+(?:scale|index|composite))\b/i;
+/* Vecindario de un reporte de puntuaciones: dominios hermanos del Vineland-3 y
+   del BASC-3 PRQ, o valores de rango. */
+const TERM_SCORE_NEIGHBORHOOD=/\b(?:daily\s+living\s+skills|interpersonal\s+relationships|play\s+and\s+leisure|motor\s+skills|receptive|expressive|written|socialization|adaptive\s+behavior\s+composite|attachment|discipline\s+practices|parenting\s+confidence|satisfaction\s+with\s+school|involvement|moderately\s+low|adequate|low\s+low|standard\s+scores?|percentiles?|T-?scores?|v-?scale)\b/i;
+
+function termRoleAt(text,position,len){
+  const sent=_termSentence(text,position,len);
+  if(TERM_ROLE_PROGRAM_SENT.test(sent))return 'program';
+  // Despues de programa: "reducir la frustracion medida por el BASC-3" SI es un
+  // programa aunque nombre el instrumento.
+  if(TERM_ROLE_INSTRUMENT.test(sent))return 'instrument';
+  // Y el caso que el respaldo por encabezado clasificaba mal: una tabla de
+  // puntuaciones no nombra el instrumento en cada fila, pero si a sus dominios
+  // hermanos. Exige el nombre propio de la escala Y el vecindario de puntajes.
+  if(TERM_SCALE_NAME.test(sent)&&TERM_SCORE_NEIGHBORHOOD.test(sent))return 'instrument';
+  if(TERM_ROLE_BACKGROUND_SENT.test(sent))return 'background';
+  const back=text.slice(Math.max(0,position-1500),position).toLowerCase();
+  let p=-1,b=-1;
+  for(const h of TERM_ROLE_PROGRAM_HEADING){const i=back.lastIndexOf(h);if(i>p)p=i;}
+  for(const h of TERM_ROLE_BACKGROUND_HEADING){const i=back.lastIndexOf(h);if(i>b)b=i;}
+  if(p===-1&&b===-1)return 'unknown';
+  return p>=b?'program':'background';
+}
+
 function scanProhibitedTerms(text){
   const findings=[];
   for(const term of PROHIBITED_TERMS){
@@ -2191,6 +2377,66 @@ function scanProhibitedTerms(text){
       }
     }
     if(!occ.length)continue;
+
+    /* Terminos acotados por rol: los cuatro que Rolando puso en discusion.
+       Solo son defecto cuando se escriben COMO programa. En los antecedentes,
+       como lo que refiere la familia sobre la vida diaria, no se reportan. */
+    if(term.roleScoped){
+      const roles=occ.map(o=>({...o, rol:termRoleAt(text,o.index,o.match.length)}));
+      const prog=roles.filter(r=>r.rol==='program');
+      const dudosos=roles.filter(r=>r.rol==='unknown');
+      const cat=term.category==='prohibited_concept'?'prohibited_intervention':'emotional_state';
+      if(prog.length){
+        const f=prog[0];
+        // ¿El analista ya escribió la versión observable en otra parte de la
+        // misma entrada del programa? Suele estar en el procedimiento.
+        const entry=_termProgramEntry(text,f.index);
+        // Tercer caso, visto en una reevaluacion real: la redaccion observable
+        // esta en la MISMA frase que la etiqueta ("is calm and has stopped
+        // crying, screaming... for at least 30 seconds"). Entonces la palabra
+        // es redundante y basta borrarla: no hay nada que reescribir.
+        const propia=_termSentence(text,f.index,f.match.length);
+        const redundante=TERM_OBSERVABLE_ANCHOR.test(propia)?propia.replace(/\s+/g,' ').trim().slice(0,200):null;
+        const obs=redundante?null:_termObservableElsewhere(entry.texto,f.index-entry.offset,f.match.length);
+        const veces=prog.length>1?` (${prog.length} veces así)`:'';
+        // El objetivo casi siempre es legítimo: lo que lo compromete es la
+        // etiqueta. El hallazgo lo dice, para no dar a entender que la meta
+        // está mal cuando lo que está mal es cómo se redactó.
+        const porQue='El objetivo en sí puede ser correcto y medible; lo que lo compromete es la palabra: no se puede contar, dos observadores la puntúan distinto y el IOA se cae. Y en una denegación el revisor no discute la meta, dice que el criterio no es replicable.';
+        const patron='Redáctela como antecedente → respuesta observable → criterio: ante [el antecedente concreto], [el cliente] [hace la respuesta contable], durante [tiempo] o en [N de 10] oportunidades, sin [conducta contable 1], [2] ni [3].';
+        findings.push({
+          id:uid(), ruleId:'TERM_'+term.id, severity:'blocker', category:cat,
+          description: redundante
+            ? `"${f.match}" es REDUNDANTE aquí${veces}: la propia frase ya dice lo observable a su lado — «${redundante}». Bórrela y no hace falta reescribir nada más; lo medible ya está escrito. ${porQue}`
+            : obs
+            ? `"${f.match}" aparece en la definición del programa${veces}, pero la redacción observable YA ESTÁ ESCRITA en la misma entrada: «${obs}». Súbala a la definición y quite la etiqueta: el analista ya sabe qué hay que ver, solo lo puso en el lugar equivocado. ${porQue}`
+            : `"${f.match}" aparece como intervención, programa de reemplazo u objetivo de adquisición de habilidades${veces}. Ahí no debe aparecer. ${porQue} ${patron}`,
+          matchedText:f.match, context:extractContext(text,f.index,f.match.length), position:f.index,
+          suggestedRewrite: redundante
+            ? (_termDropLabel(redundante,f.match)||'')
+            : obs
+            ? `Definition: ${obs}`
+            : 'Definition: within [N] seconds of [antecedent], [client] [observable response] and maintains it for [duration], without [countable behavior 1], [2], or [3].',
+          suggestedAction: redundante
+            ? `Delete the word "${f.match}" from this sentence. The surrounding wording already states the observable, countable criterion, so nothing else needs rewriting.`
+            : obs
+            ? `Move the observable wording already written elsewhere in this program entry into the Definition, and delete the label. The objective is fine; only the wording is not.`
+            : `Rewrite the definition as antecedent, observable response and criterion, naming what an observer must see and count. ${term.rationale_en||term.rationale}`,
+          status:'open', createdAt:Date.now()
+        });
+      }else if(dudosos.length){
+        const f=dudosos[0];
+        findings.push({
+          id:uid(), ruleId:'TERM_'+term.id, severity:'warning', category:cat,
+          description:`"${f.match}" aparece ${dudosos.length} ${dudosos.length===1?'vez':'veces'} sin que se pueda determinar si se usa como programa o solo como descripción. Como intervención, programa de reemplazo u objetivo de adquisición nunca debe aparecer; en los antecedentes, como algo que refiere la familia sobre la vida diaria, no es un problema. Verifique en qué sentido está escrita. ${term.rationale}`,
+          matchedText:f.match, context:extractContext(text,f.index,f.match.length), position:f.index,
+          suggestedAction:`Check whether this is written as a program target or as narrative description. If it names a program, replace it with the observable behavior and the ABA procedure. If it reports what the family described, it needs no change.`,
+          status:'open', createdAt:Date.now()
+        });
+      }
+      // Todas en antecedentes o en el reporte de un instrumento: nada.
+      continue;
+    }
 
     // Split by context. Prohibited *concepts/interventions* (problem solving,
     // mindfulness, etc.) are errors anywhere — they are not vocabulary, they are
@@ -2320,42 +2566,51 @@ function scanArticlePatterns(text){
   return findings;
 }
 
+/* Una sola tarjeta por intervencion prohibida, no una por aparicion. Antes
+   hacia matches.slice(0,2) y empujaba DOS tarjetas identicas: sobre un
+   assessment real "Planned Ignoring" salia duplicado, y dos tarjetas para un
+   mismo problema es lo que hace que el analista deje de leer el panel. */
 function scanProhibitedInterventions(text){
   const findings=[];
   for(const intv of PROHIBITED_INTERVENTIONS){
+    const occ=[];
     for(const lang of['en','es']){
       for(const variant of(intv.variants[lang]||[])){
         const pattern=new RegExp('\\b'+escapeRegex(variant)+'\\b','gi');
-        const matches=[...text.matchAll(pattern)];
-        for(const m of matches.slice(0,2)){
-          findings.push({
-            id:uid(),
-            ruleId:'INT_'+intv.id,
-            severity:intv.severity,
-            category:'prohibited_intervention',
-            description:`Intervención prohibida detectada: "${m[0]}". ${intv.rationale}`,
-            matchedText:m[0],
-            context:extractContext(text,m.index,m[0].length),
-            position:m.index,
-            suggestedAction:'Replace with an authorized intervention compatible with the behavior\'s function (DRA, DRI, DRO, FCT, EXT, NCR, antecedent modification, prompting, etc.).',
-            status:'open',
-            createdAt:Date.now()
-          });
-        }
+        for(const m of text.matchAll(pattern))occ.push({match:m[0],index:m.index});
       }
     }
+    if(!occ.length)continue;
+    occ.sort((a,b)=>a.index-b.index);
+    const first=occ[0];
+    // Formas distintas de nombrarla, para que el analista las encuentre todas.
+    const formas=[...new Set(occ.map(o=>o.match))];
+    findings.push({
+      id:uid(),
+      ruleId:'INT_'+intv.id,
+      severity:intv.severity,
+      category:'prohibited_intervention',
+      description:`Intervención prohibida detectada: "${first.match}"${occ.length>1?` (aparece ${occ.length} veces${formas.length>1?`, como ${formas.map(f=>'"'+f+'"').join(' y ')}`:''})`:''}. ${intv.rationale}`,
+      matchedText:first.match,
+      context:extractContext(text,first.index,first.match.length),
+      position:first.index,
+      occurrences:occ.length,
+      suggestedAction:`Replace every occurrence with an authorized intervention compatible with the behavior's function (DRA, DRI, DRO, FCT, EXT, NCR, antecedent modification, prompting, etc.).`,
+      status:'open',
+      createdAt:Date.now()
+    });
   }
   return findings;
 }
 
 function scanPlaceholders(text){
   const findings=[];
-  const tbdValid=[]; // TBD/TBA de fecha de servicio: convenciÃ³n vÃ¡lida
+  const tbdValid=[]; // TBD/TBA de fecha de servicio: convención válida
   for(const pattern of PLACEHOLDER_PATTERNS){
     const matches=[...text.matchAll(pattern.regex)];
     for(const m of matches){
-      // TBD/TBA: vÃ¡lido solo en fechas de servicio o autorizaciÃ³n. En los
-      // campos que FL Medicaid Â§6.2.2 exige por meta, es un elemento
+      // TBD/TBA: válido solo en fechas de servicio o autorización. En los
+      // campos que FL Medicaid §6.2.2 exige por meta, es un elemento
       // requerido faltante. Ver TBD_* arriba.
       if(pattern.contextual==='tbd'){
         const kind=classifyTbdContext(text,m.index,m[0].length);
@@ -2366,7 +2621,7 @@ function scanPlaceholders(text){
             ruleId:'FL_GOAL_ELEMENT_TBD',
             severity:'blocker',
             category:'florida_medicaid',
-            description:`"${m[0]}" sustituye un elemento que la Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024, Â§6.2.2) exige para cada meta u objetivo: definiciÃ³n observable, procedimientos de observaciÃ³n y mediciÃ³n directa, nivel actual (lÃ­nea base), procedimientos de reducciÃ³n o adquisiciÃ³n, condiciones y criterio de dominio, fecha de introducciÃ³n, fecha estimada de dominio, plan de generalizaciÃ³n y reporte de progreso. La norma pide una fecha o un valor *estimado*, asÃ­ que no exige certeza: dejarlo en "${m[0]}" es un elemento faltante y puede motivar denegaciÃ³n.`,
+            description:`"${m[0]}" sustituye un elemento que la Florida Medicaid Behavior Analysis Services Coverage Policy (diciembre 2024, §6.2.2) exige para cada meta u objetivo: definición observable, procedimientos de observación y medición directa, nivel actual (línea base), procedimientos de reducción o adquisición, condiciones y criterio de dominio, fecha de introducción, fecha estimada de dominio, plan de generalización y reporte de progreso. La norma pide una fecha o un valor *estimado*, así que no exige certeza: dejarlo en "${m[0]}" es un elemento faltante y puede motivar denegación.`,
             matchedText:m[0],
             context:extractContext(text,m.index,m[0].length),
             position:m.index,
@@ -2402,8 +2657,8 @@ function scanPlaceholders(text){
     }
   }
   // Un solo recordatorio agregado, sin peso de cumplimiento, para los TBD que
-  // SÃ son convenciÃ³n vÃ¡lida (fechas que dependen de la autorizaciÃ³n o del
-  // servicio en ejecuciÃ³n). No es un hallazgo.
+  // SÍ son convención válida (fechas que dependen de la autorización o del
+  // servicio en ejecución). No es un hallazgo.
   if(tbdValid.length){
     const first=tbdValid[0];
     findings.push({
@@ -2411,7 +2666,7 @@ function scanPlaceholders(text){
       ruleId:'PLACEHOLDER_TBD_CONVENTION',
       severity:'notice',
       category:'documentation_convention',
-      description:`"TBD/TBA" aparece ${tbdValid.length} ${tbdValid.length===1?'vez':'veces'} en contexto de fechas de servicio o autorizaciÃ³n (inicio, perÃ­odo autorizado, prÃ³xima revisiÃ³n, alta). Eso es convenciÃ³n vÃ¡lida, no un placeholder sin completar ni un hallazgo de cumplimiento: la fecha depende de la autorizaciÃ³n o del servicio en ejecuciÃ³n. Solo confirme, antes de enviar, que las que ya se puedan concretar queden con su dato.`,
+      description:`"TBD/TBA" aparece ${tbdValid.length} ${tbdValid.length===1?'vez':'veces'} en contexto de fechas de servicio o autorización (inicio, período autorizado, próxima revisión, alta). Eso es convención válida, no un placeholder sin completar ni un hallazgo de cumplimiento: la fecha depende de la autorización o del servicio en ejecución. Solo confirme, antes de enviar, que las que ya se puedan concretar queden con su dato.`,
       matchedText:first.match,
       context:extractContext(text,first.index,first.match.length),
       position:first.index,
@@ -2781,6 +3036,10 @@ const AUDIT_REQUIREMENTS=[
    requisito:'El plan de transicion debe detallar como se proyecta reducir las horas a medida que se alcanzan las metas de transicion, con metas SMART de las habilidades necesarias para un nivel de cuidado menor, progreso documentado en cada reevaluacion, recursos comunitarios para mantener las ganancias tras el alta y mayor frecuencia de entrenamiento a cuidadores al acercarse a los criterios. Para miembros en edad escolar cuyo ABA a tiempo completo impide la asistencia, un plan documentado de traspaso a un entorno escolar.',
    reglas:['MOL_TRANSITION_NO_TITRATION','MOL_DISCHARGE_SCHOOL_TRANSITION'],
    nota:'La titracion de horas se exige en tres lugares distintos de la guia, senal de que falta a menudo.'},
+  {id:'MOL_POLICY_SCOPE_ASD', fuente:'Molina Clinical Policy No. 482', edicion:'06/10/2026', seccion:'titulo y alcance de la policy', verificacion:'primaria', severidad:'notice',
+   requisito:'La policy del pagador se titula "Applied Behavioral Analysis for Autism Spectrum Disorder" y sus criterios, incluida la seccion del CDE de la guia de Florida, son especificos del TEA. Para un diagnostico que no sea del espectro hay que verificar que politica de cobertura rige el analisis de conducta.',
+   reglas:['MOL_POLICY_SCOPE_NOT_ASD'],
+   nota:'Encontrado auditando un reassessment real cuyo diagnostico era TDAH y ODD: las reglas del CDE se callan y solo se avisa del alcance. La atribucion del diagnostico se comprueba con _cdeClientAsd, que rechaza las menciones de la historia familiar.'},
   {id:'CPT_UNIT_MATH', fuente:'Convencion del consultorio y fee schedule de Florida', edicion:'-', seccion:'-', verificacion:'convencion', severidad:'blocker',
    requisito:'Unidades = horas por semana x 4 unidades por hora x 26 semanas para un periodo de autorizacion de seis meses.',
    reglas:['CPT_UNITS_MATH'],
@@ -4085,6 +4344,28 @@ function _molParseDate(frag,nowMs){
    linea o celda. El corte en el salto de linea es la leccion de
    classifyTbdContext: sin el, "Date of plan:" se lleva la fecha de nacimiento
    del renglon siguiente. */
+/* Diseno vertical de tabla: la etiqueta en un renglon y el valor en el
+   siguiente no vacio. Es el formato real de los encabezados de esta consulta,
+   y con el las seis reglas de fechas estaban MUDAS:
+       Date Of Report
+       <blanco>
+       06/29/2026
+   Recuperarlo no puede reintroducir el bug historico, donde "Date of plan:"
+   se llevaba la fecha de nacimiento del renglon de abajo. El discriminador es
+   que un valor suelto NO TRAE ETIQUETA: si el renglon siguiente contiene ':'
+   es otro campo y se rechaza. Y si es largo, es un parrafo, no una celda. */
+function _molVerticalSegment(text,fromIndex){
+  const lineas=text.slice(fromIndex,fromIndex+400).split(/\r?\n/);
+  for(let i=1;i<lineas.length;i++){
+    const L=lineas[i].replace(/^[\s|]+/,'').replace(/[\s|]+$/,'');
+    if(!L)continue;                      // renglon en blanco: sigue buscando
+    if(L.length>40)return null;          // parrafo, no celda de tabla
+    if(L.indexOf(':')!==-1)return null;  // es OTRO campo etiquetado
+    return L;
+  }
+  return null;
+}
+
 function _molLabeledDate(text,labelRe,nowMs){
   if(!text)return null;
   const re=new RegExp(labelRe.source,labelRe.flags.replace('g','')+'g');
@@ -4098,7 +4379,11 @@ function _molLabeledDate(text,labelRe,nowMs){
     let seg=text.slice(fin, fin+60);
     const cut=seg.search(/[\n\r]|(?:\.\s)|\t|\|/);
     if(cut!==-1)seg=seg.slice(0,cut);
-    const d=_molParseDate(seg,nowMs);
+    let d=_molParseDate(seg,nowMs);
+    if(!d){                              // el valor puede ir en el renglon de abajo
+      const v=_molVerticalSegment(text,fin);
+      if(v)d=_molParseDate(v,nowMs);
+    }
     if(d)return {...d, etiqueta:m[0].trim(), index:m.index};
   }
   return null;
@@ -4115,7 +4400,11 @@ function _molLabeledRange(text,labelRe,nowMs){
     let seg=text.slice(fin, fin+120);
     const cut=seg.search(/[\n\r]|\t|\|/);
     if(cut!==-1)seg=seg.slice(0,cut);
-    const a=_molParseDate(seg,nowMs);
+    let a=_molParseDate(seg,nowMs);
+    if(!a){                              // el rango puede ir en el renglon de abajo
+      const v=_molVerticalSegment(text,fin);
+      if(v){const d=_molParseDate(v,nowMs);if(d){seg=v;a=d;}}
+    }
     if(!a)continue;
     const after=seg.slice(seg.indexOf(a.texto)+a.texto.length);
     if(!/^\s*(?:-|–|—|to|through|hasta|al)\s*/i.test(after))continue;
@@ -4344,6 +4633,39 @@ function _cdeFind(clauses,pred){
   return null;
 }
 
+/* ¿El TEA es diagnostico DE LA CLIENTA, o de un familiar?
+   Encontrado auditando un reassessment real: en 167.000 caracteres la UNICA
+   mencion de "Autism Spectrum Disorder" estaba en la historia familiar -- el
+   PADRE de la clienta lo tiene -- y MOL_DSM5_SEVERITY_MISSING lo tomo por
+   suyo, pidiendole un nivel de severidad del TEA a una nina cuyo diagnostico
+   es TDAH (F90.9) y ODD (F91.3). Comprobar que un diagnostico APARECE no es
+   comprobar que es SUYO: ese es justo el fallo que este proyecto evita.
+
+   El patron familiar es estrecho a proposito. "parent" a secas no sirve:
+   "parent training" y "family guidance" estan en cada documento de ABA y
+   dejarian el bloque mudo sobre clientes que SI tienen TEA. Exige atribucion
+   a un pariente ("her father", "family history", "genetic loading"). */
+const CDE_RE_FAMILY=/\b(?:family\s+(?:history|hx)|genetic\s+loading|maternal|paternal|(?:her|his|their|the|client'?s?)\s+(?:father|mother|dad|mom|brother|sister|sibling|siblings|twin|grandmother|grandfather|aunt|uncle|cousin|parents)\b|\d+\s+siblings?\b|antecedentes\s+familiares|su\s+(?:padre|madre|hermano|hermana))\b/i;
+// Codigos del TEA: en una lista de diagnosticos el codigo es del cliente.
+const CDE_RE_ASD_CODE=/\bF84\.\d\b|\b299\.0\d?\b/;
+// Codigo CIE-10 de salud mental que NO es TEA: prueba que hay un diagnostico
+// declarado y que no es del espectro.
+const CDE_RE_OTHER_DX_CODE=/\bF(?!84\.)\d{2}\.\d\b/;
+
+function _cdeClientAsd(text){
+  if(CDE_RE_ASD_CODE.test(text))return true;
+  const re=new RegExp(CDE_RE_ASD.source,'gi');
+  let m;
+  while((m=re.exec(text))!==null){
+    // Basta UNA mencion fuera de contexto familiar. En un assessment real el
+    // cliente tenia TEA y sus tres hermanos tambien: algunas menciones son
+    // familiares y otras no, y las suyas son las que cuentan.
+    const v=text.slice(Math.max(0,m.index-260), m.index+m[0].length+120);
+    if(!CDE_RE_FAMILY.test(v))return true;
+  }
+  return false;
+}
+
 function scanCdeSeparate(text,docType){
   const findings=[];
   if(!text)return findings;
@@ -4354,6 +4676,23 @@ function scanCdeSeparate(text,docType){
     matchedText:matchedText||'',status:'open',createdAt:Date.now()
   });
   const clauses=_cdeClauses(text);
+
+  /* La politica del pagador que auditamos es especifica del TEA: la MCP 482 se
+     titula "Applied Behavioral Analysis for Autism Spectrum Disorder" y la
+     seccion del CDE lo es tambien. Si el diagnostico de la clienta NO es del
+     espectro, estas ocho reglas no aplican y exigirlas seria inventar. Se
+     callan, y en su lugar se avisa de que hay que verificar que politica rige.
+     Si el diagnostico no se puede determinar, el bloque corre igual: callar
+     sobre lo desconocido esconderia hallazgos reales. */
+  if(!_cdeClientAsd(text)){
+    if(CDE_RE_OTHER_DX_CODE.test(text)){
+      add('MOL_POLICY_SCOPE_NOT_ASD','notice',
+        `El diagnóstico declarado no es del espectro autista, y la política de ${P} contra la que audita esta herramienta es específica del TEA: la Clinical Policy 482 se titula "Applied Behavioral Analysis for Autism Spectrum Disorder" y su sección del CDE lo es también. Por eso las reglas del CDE no se aplicaron a este documento. Verifique qué política de cobertura rige el análisis de conducta para este diagnóstico antes de enviar: los requisitos pueden ser otros.`,
+        'Confirm which payer coverage policy governs behavior analysis services for this diagnosis, and check its documentation requirements against this assessment. The ASD-specific CDE requirements were not applied.',
+        '');
+    }
+    return findings;
+  }
 
   /* ---- 1. CONCLUYENTE: el CDE presentado como el behavior assessment ----
      Las dos formas reales en que aparece. La primera es la declaracion
@@ -5014,34 +5353,50 @@ function scanCommunicationCongruence(text){
 function scanSTOIntegrity(text){
   const findings=[];
   if(!text)return findings;
-  const seen={};
+  /* Se AGREGA por regla, no por aparicion. Antes se deduplicaba por el texto
+     coincidente, asi que "STO#2: STO#1:", "STO#3: STO#1:" y "STO#4: STO#1:"
+     contaban como problemas distintos: sobre una reevaluacion real salieron
+     NUEVE tarjetas para un unico defecto de copiado. Ahora sale una, con la
+     cuenta y las etiquetas concretas para que el analista las encuentre. */
+  const cubos={};
   const push=(rule,desc,matched,pos,action)=>{
-    const key=rule+'|'+String(matched).toLowerCase().slice(0,40);
-    if(seen[key])return; seen[key]=1;
-    findings.push({id:uid(),ruleId:rule,severity:'warning',category:'formatting_error',
-      description:desc,matchedText:matched,context:extractContext(text,pos,String(matched).length),
-      position:pos,suggestedAction:action,status:'open',createdAt:Date.now()});
+    const c=cubos[rule]||(cubos[rule]={desc,action,pos,first:matched,formas:[],n:0});
+    const t=String(matched).trim();
+    c.n++;
+    if(c.formas.length<8&&!c.formas.includes(t))c.formas.push(t);
+  };
+  const emitir=()=>{
+    for(const [rule,c] of Object.entries(cubos)){
+      const cuenta=c.n>1?` Aparece ${c.n} veces` : '';
+      const lista=c.formas.length>1?`: ${c.formas.map(f=>'«'+f+'»').join(', ')}.`:(c.n>1?'.':'');
+      findings.push({id:uid(),ruleId:rule,severity:'warning',category:'formatting_error',
+        description:c.desc+cuenta+lista,matchedText:c.first,
+        context:extractContext(text,c.pos,String(c.first).length),
+        position:c.pos,occurrences:c.n,suggestedAction:c.action,
+        status:'open',createdAt:Date.now()});
+    }
   };
   let m;
   // (1) Two goal labels back-to-back: "STO#2: STO#1:"
   const re1=/\b(?:STO|LTO)\s*#?\s*\d*\s*[:.]\s*(?:STO|LTO)\s*#?\s*\d*\s*:/gi;
   while((m=re1.exec(text))!==null){
-    push('STO_DUP_LABEL','Etiqueta de objetivo duplicada (p. ej. "STO#3: STO#1:"). Deje una sola etiqueta correcta por objetivo.',m[0].trim(),m.index,'Remove the duplicated STO/LTO label so each objective carries a single, correct label.');
-    if(findings.length>=20)break;
+    push('STO_DUP_LABEL','Etiqueta de objetivo duplicada (p. ej. "STO#3: STO#1:"). Deje una sola etiqueta correcta por objetivo.',m[0].trim(),m.index,'Remove every duplicated STO/LTO label so each objective carries a single, correct label.');
+    if(cubos.STO_DUP_LABEL&&cubos.STO_DUP_LABEL.n>=60)break;
   }
   // (2) A goal label glued directly onto a sentence period (rewrite pasted after
   //     the original, no space): "...observations.STO: Mother will implement..."
   const re3=/[a-z)]\.(?:STO|LTO)\s*#?\s*\d*\s*:/gi;
   while((m=re3.exec(text))!==null){
     push('STO_GLUED_REWRITE','Una reescritura de objetivo quedó pegada al original ("…observations.STO: …"). Reemplace el objetivo en su lugar, no lo agregue después.',m[0].trim(),m.index,'Replace the original objective in place; delete the second, pasted objective text.');
-    if(findings.length>=20)break;
+    if(cubos.STO_GLUED_REWRITE&&cubos.STO_GLUED_REWRITE.n>=60)break;
   }
   // (3) Repeated measurement clause
   const re2=/as measured by [^.\n]{3,80}\.\s*as measured by/gi;
   while((m=re2.exec(text))!==null){
-    push('STO_DUP_MEASURE','Cláusula de medición repetida ("as measured by … as measured by …"). Déjela una sola vez.',m[0].trim(),m.index,'Delete the duplicated "as measured by ..." clause; keep it once.');
-    if(findings.length>=30)break;
+    push('STO_DUP_MEASURE','Cláusula de medición repetida ("as measured by … as measured by …"). Déjela una sola vez.',m[0].trim(),m.index,'Delete every duplicated "as measured by ..." clause; keep it once.');
+    if(cubos.STO_DUP_MEASURE&&cubos.STO_DUP_MEASURE.n>=60)break;
   }
+  emitir();
   return findings;
 }
 
