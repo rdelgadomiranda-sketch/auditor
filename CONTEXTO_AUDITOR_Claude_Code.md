@@ -133,6 +133,35 @@ Reglas: `HOURS_TOTAL_CONFLICT` · `HOURS_TOTAL_VS_CPT_SUM` · `HOURS_CODE_CONFLI
 
 ---
 
+### 1.6 Terminología acotada por rol (`termRoleAt`)
+
+**Decisión clínica de Rolando**, tras auditar dos documentos reales en los que **cinco de siete blockers** eran cuatro palabras:
+
+> *"calm, Frustration, self-regulation, Coping Skills nunca debe aparecer como intervenciones o programas de reemplazo o como adquisición de habilidades. Pero suelen referenciarse en los background de los clientes como algo que menciona la familia y en ese momento no es un problema clínico y pueden ser situaciones reales de la vida cotidiana."*
+
+Es la forma de `classifyTbdContext`: la misma palabra, distinto veredicto según el papel que cumple. Y el eje **no** es clínico / no clínico —eso ya lo hace `sectionContextAt`— sino **programa vs antecedentes**:
+
+| rol | veredicto | por qué |
+|---|---|---|
+| `program` | `blocker` | Escrito como intervención, programa de reemplazo, objetivo de adquisición o **definición operacional**. Ese es el defecto real. |
+| `background` | **no se reporta** | Lo que la familia cuenta de la vida diaria no es un problema clínico. |
+| `instrument` | **no se reporta** | Es el nombre de una escala del instrumento, no una elección del analista. |
+| `unknown` | `warning` | No se puede probar que sea un programa, y afirmarlo con un `blocker` es lo que producía los falsos positivos. |
+
+Solo se aplica a los cuatro términos marcados `roleScoped`. Los demás conceptos fuera del marco ABA (mindfulness, problem solving, yoga) **siguen siendo error en cualquier parte**: son procedimientos, no vocabulario, y Rolando no los puso en discusión.
+
+**La oración pesa más que el encabezado.** Un programa nombrado dentro de los antecedentes sigue siendo un programa, y un *"la madre refiere"* dentro de una sección de metas sigue siendo lo que cuenta la familia. El encabezado es solo el respaldo cuando la oración no dice nada.
+
+**Dos falsos positivos que solo aparecieron con documentos reales:**
+
+1. **La ventana de la "oración" no estaba acotada.** En una tabla del `.docx`/`.pdf` la fila entera cae entre dos saltos, así que una señal de programa en una celda lejana convertía en programa una celda sin relación: un LTO de rutinas diarias hacía `program` a un `calmly` que estaba en otra columna. Hay un **tope duro de 160 caracteres por lado**.
+
+2. **Nombres propios de escalas.** `Relational Frustration` es una escala del **BASC-3 PRQ** y `Coping Skills` un subdominio del **Vineland-3** (bajo Socialización). Van a aparecer en *todos* los assessments de esta consulta. `TERM_SCALE_NAME` más `TERM_SCORE_NEIGHBORHOOD` (dominios hermanos y valores de rango) los identifican, y se comprueban **después** de `program` para que `"Replacement program: Coping Skills"` siga siendo `blocker`. La causa raíz no era la oración sino **el respaldo por encabezado**, que en una tabla de puntuaciones encontraba antes una palabra de programa que una de antecedentes.
+
+**Exención previa que no se tocó:** `isExempted` ya suprimía cualquier término citado directamente como reporte del cuidador (`"mother reported …"`), para **todos** los términos y no solo estos cuatro. `termRoleAt` es más amplio y consciente de la sección, pero no sustituye a aquélla.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.
