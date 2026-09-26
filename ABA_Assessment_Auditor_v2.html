@@ -813,10 +813,75 @@ function parseAgeString(str){
   return bare?parseInt(bare[1],10):null;
 }
 
+// Edad en un CAMPO ETIQUETADO del encabezado: "Recipient's Age: 10 years".
+// Hace falta ademas de los patrones de prosa porque esos son estrechos a
+// proposito (un "age X" suelto captura la edad de un hermano o un hito del
+// desarrollo) y por eso quedan ciegos cuando la edad solo consta en el bloque
+// de demograficos. Aqui el sello de que la edad es del CLIENTE no es la
+// cercania sino la ETIQUETA: "Recipient's Age" no puede ser la del hermano.
+//
+// La fecha de nacimiento del mismo bloque NO se usa para calcular la edad: eso
+// exigiria restar contra el reloj de la auditoria, y en este proyecto solo se
+// comparan fechas que esten las DOS dentro del documento.
+//
+// Los dos puntos tienen que ir pegados a la palabra: eso solo deja pasar el
+// campo y descarta de un golpe "Age of onset:", "Age at diagnosis:",
+// "Age Equivalent:" y "Age Range:", que no son la edad actual.
+const AGE_FIELD_RE=/\b(?:edad|age)\s*(?:\((?:years?|a\u00f1os?)\))?\s*:/gi;
+
+// Lo que precede a la palabra y la convierte en OTRA cosa: la edad de otra
+// persona, o una edad que no es la cronologica.
+const AGE_LABEL_BAD_PREFIX=/(?:mother|father|parent|guardian|sibling|brother|sister|caregiver|madre|padre|hermano|hermana|developmental|mental|adaptive|social|equivalent|gestational|bone)\s*(?:['\u2019]\s*s)?\s*$/i;
+
+// Lee el valor del campo con la misma disciplina que las fechas verticales: una
+// ventana corta que no se cruza al campo de al lado.
+function _ageFieldValue(text,desde){
+  let v=text.slice(desde,desde+28);
+  const corte=v.search(/[:\n\r|]/);
+  if(corte!==-1)v=v.slice(0,corte);
+  // "Age: 12/29/2015" es una fecha mal etiquetada, y "Age: 3-0 to 21-11" es el
+  // rango normativo de un instrumento. Ninguna de las dos es una edad.
+  if(/^\s*\d{1,2}\s*[\/\-.]\s*\d/.test(v))return null;
+  // El numero tiene que ABRIR el valor. Si no, la cifra que se ve pertenece a
+  // otro campo: es la trampa de leer un numero pegado a la etiqueta vecina, que
+  // en este proyecto ya ha dado tres falsos positivos.
+  const m=/^\s*(\d{1,2})\s*(?:years?|yrs?|y\/o|a\u00f1os?)?/i.exec(v);
+  if(!m)return null;
+  const anios=parseInt(m[1],10);
+  if(anios<1||anios>21)return null;
+  // Meses solo si vienen inmediatamente despues, dentro del mismo campo.
+  const mm=/^\s*(?:(?:and|y)\s+)?(\d{1,2})\s*(?:months?|mos?\b|meses)/i.exec(v.slice(m[0].length));
+  return anios+(mm?parseInt(mm[1],10)/12:0);
+}
+
+function ageFromLabeledField(text){
+  if(!text)return null;
+  const vals=[];
+  const re=new RegExp(AGE_FIELD_RE.source,'gi');
+  let m;
+  while((m=re.exec(text))!==null){
+    if(!AGE_LABEL_BAD_PREFIX.test(text.slice(Math.max(0,m.index-40),m.index))){
+      const v=_ageFieldValue(text,m.index+m[0].length);
+      if(v!==null)vals.push(v);
+    }
+    if(re.lastIndex<=m.index)re.lastIndex=m.index+1;
+  }
+  if(!vals.length)return null;
+  // Si dos campos etiquetados se contradicen en el año, no elegimos bando: la
+  // misma regla que ya rige para los patrones de prosa.
+  const anios={};
+  for(const v of vals)anios[Math.floor(v)]=1;
+  return Object.keys(anios).length===1?vals[0]:null;
+}
+
 function resolveAgeYears(client,text){
   // El perfil del cliente manda: lo escribio el analista.
   const fromProfile=parseAgeString(client&&client.age);
   if(fromProfile!==null)return fromProfile;
+  // Campo etiquetado del encabezado: va antes que la prosa porque la etiqueta
+  // nombra al cliente, mientras que los patrones de prosa son una heuristica.
+  const fromField=ageFromLabeledField(text);
+  if(fromField!==null)return fromField;
   // Respaldo desde el documento usando SOLO los patrones de edad actual de
   // scanAgeConsistency. Los patrones sueltos ("age X", "X-year-old") capturan
   // edades de hermanos y de hitos del desarrollo, no la del cliente.
@@ -5517,6 +5582,10 @@ function scanAgeConsistency(text){
   const findings=[];
   if(!text)return findings;
   const ages={};
+  // Deliberadamente NO se usa aqui el campo etiquetado del encabezado que si
+  // lee resolveAgeYears: meterlo cambiaria cuando alerta esta regla clinica
+  // (un reassessment suele citar la edad del assessment original en la prosa),
+  // y eso es decision de Rolando, no de una refactorizacion.
   // High-precision CURRENT-age patterns only. Milestone ages ("walked at age 1",
   // "toilet trained by 4 years of age") and sibling ages ("a 3-year-old brother")
   // must NOT count — they are not the client's current age. So we deliberately do
