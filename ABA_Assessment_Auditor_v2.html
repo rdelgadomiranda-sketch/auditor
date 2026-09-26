@@ -2566,30 +2566,39 @@ function scanArticlePatterns(text){
   return findings;
 }
 
+/* Una sola tarjeta por intervencion prohibida, no una por aparicion. Antes
+   hacia matches.slice(0,2) y empujaba DOS tarjetas identicas: sobre un
+   assessment real "Planned Ignoring" salia duplicado, y dos tarjetas para un
+   mismo problema es lo que hace que el analista deje de leer el panel. */
 function scanProhibitedInterventions(text){
   const findings=[];
   for(const intv of PROHIBITED_INTERVENTIONS){
+    const occ=[];
     for(const lang of['en','es']){
       for(const variant of(intv.variants[lang]||[])){
         const pattern=new RegExp('\\b'+escapeRegex(variant)+'\\b','gi');
-        const matches=[...text.matchAll(pattern)];
-        for(const m of matches.slice(0,2)){
-          findings.push({
-            id:uid(),
-            ruleId:'INT_'+intv.id,
-            severity:intv.severity,
-            category:'prohibited_intervention',
-            description:`Intervención prohibida detectada: "${m[0]}". ${intv.rationale}`,
-            matchedText:m[0],
-            context:extractContext(text,m.index,m[0].length),
-            position:m.index,
-            suggestedAction:'Replace with an authorized intervention compatible with the behavior\'s function (DRA, DRI, DRO, FCT, EXT, NCR, antecedent modification, prompting, etc.).',
-            status:'open',
-            createdAt:Date.now()
-          });
-        }
+        for(const m of text.matchAll(pattern))occ.push({match:m[0],index:m.index});
       }
     }
+    if(!occ.length)continue;
+    occ.sort((a,b)=>a.index-b.index);
+    const first=occ[0];
+    // Formas distintas de nombrarla, para que el analista las encuentre todas.
+    const formas=[...new Set(occ.map(o=>o.match))];
+    findings.push({
+      id:uid(),
+      ruleId:'INT_'+intv.id,
+      severity:intv.severity,
+      category:'prohibited_intervention',
+      description:`Intervención prohibida detectada: "${first.match}"${occ.length>1?` (aparece ${occ.length} veces${formas.length>1?`, como ${formas.map(f=>'"'+f+'"').join(' y ')}`:''})`:''}. ${intv.rationale}`,
+      matchedText:first.match,
+      context:extractContext(text,first.index,first.match.length),
+      position:first.index,
+      occurrences:occ.length,
+      suggestedAction:`Replace every occurrence with an authorized intervention compatible with the behavior's function (DRA, DRI, DRO, FCT, EXT, NCR, antecedent modification, prompting, etc.).`,
+      status:'open',
+      createdAt:Date.now()
+    });
   }
   return findings;
 }
@@ -5344,34 +5353,50 @@ function scanCommunicationCongruence(text){
 function scanSTOIntegrity(text){
   const findings=[];
   if(!text)return findings;
-  const seen={};
+  /* Se AGREGA por regla, no por aparicion. Antes se deduplicaba por el texto
+     coincidente, asi que "STO#2: STO#1:", "STO#3: STO#1:" y "STO#4: STO#1:"
+     contaban como problemas distintos: sobre una reevaluacion real salieron
+     NUEVE tarjetas para un unico defecto de copiado. Ahora sale una, con la
+     cuenta y las etiquetas concretas para que el analista las encuentre. */
+  const cubos={};
   const push=(rule,desc,matched,pos,action)=>{
-    const key=rule+'|'+String(matched).toLowerCase().slice(0,40);
-    if(seen[key])return; seen[key]=1;
-    findings.push({id:uid(),ruleId:rule,severity:'warning',category:'formatting_error',
-      description:desc,matchedText:matched,context:extractContext(text,pos,String(matched).length),
-      position:pos,suggestedAction:action,status:'open',createdAt:Date.now()});
+    const c=cubos[rule]||(cubos[rule]={desc,action,pos,first:matched,formas:[],n:0});
+    const t=String(matched).trim();
+    c.n++;
+    if(c.formas.length<8&&!c.formas.includes(t))c.formas.push(t);
+  };
+  const emitir=()=>{
+    for(const [rule,c] of Object.entries(cubos)){
+      const cuenta=c.n>1?` Aparece ${c.n} veces` : '';
+      const lista=c.formas.length>1?`: ${c.formas.map(f=>'«'+f+'»').join(', ')}.`:(c.n>1?'.':'');
+      findings.push({id:uid(),ruleId:rule,severity:'warning',category:'formatting_error',
+        description:c.desc+cuenta+lista,matchedText:c.first,
+        context:extractContext(text,c.pos,String(c.first).length),
+        position:c.pos,occurrences:c.n,suggestedAction:c.action,
+        status:'open',createdAt:Date.now()});
+    }
   };
   let m;
   // (1) Two goal labels back-to-back: "STO#2: STO#1:"
   const re1=/\b(?:STO|LTO)\s*#?\s*\d*\s*[:.]\s*(?:STO|LTO)\s*#?\s*\d*\s*:/gi;
   while((m=re1.exec(text))!==null){
-    push('STO_DUP_LABEL','Etiqueta de objetivo duplicada (p. ej. "STO#3: STO#1:"). Deje una sola etiqueta correcta por objetivo.',m[0].trim(),m.index,'Remove the duplicated STO/LTO label so each objective carries a single, correct label.');
-    if(findings.length>=20)break;
+    push('STO_DUP_LABEL','Etiqueta de objetivo duplicada (p. ej. "STO#3: STO#1:"). Deje una sola etiqueta correcta por objetivo.',m[0].trim(),m.index,'Remove every duplicated STO/LTO label so each objective carries a single, correct label.');
+    if(cubos.STO_DUP_LABEL&&cubos.STO_DUP_LABEL.n>=60)break;
   }
   // (2) A goal label glued directly onto a sentence period (rewrite pasted after
   //     the original, no space): "...observations.STO: Mother will implement..."
   const re3=/[a-z)]\.(?:STO|LTO)\s*#?\s*\d*\s*:/gi;
   while((m=re3.exec(text))!==null){
     push('STO_GLUED_REWRITE','Una reescritura de objetivo quedó pegada al original ("…observations.STO: …"). Reemplace el objetivo en su lugar, no lo agregue después.',m[0].trim(),m.index,'Replace the original objective in place; delete the second, pasted objective text.');
-    if(findings.length>=20)break;
+    if(cubos.STO_GLUED_REWRITE&&cubos.STO_GLUED_REWRITE.n>=60)break;
   }
   // (3) Repeated measurement clause
   const re2=/as measured by [^.\n]{3,80}\.\s*as measured by/gi;
   while((m=re2.exec(text))!==null){
-    push('STO_DUP_MEASURE','Cláusula de medición repetida ("as measured by … as measured by …"). Déjela una sola vez.',m[0].trim(),m.index,'Delete the duplicated "as measured by ..." clause; keep it once.');
-    if(findings.length>=30)break;
+    push('STO_DUP_MEASURE','Cláusula de medición repetida ("as measured by … as measured by …"). Déjela una sola vez.',m[0].trim(),m.index,'Delete every duplicated "as measured by ..." clause; keep it once.');
+    if(cubos.STO_DUP_MEASURE&&cubos.STO_DUP_MEASURE.n>=60)break;
   }
+  emitir();
   return findings;
 }
 

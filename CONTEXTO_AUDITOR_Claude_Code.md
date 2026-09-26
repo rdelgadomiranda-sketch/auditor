@@ -190,6 +190,22 @@ Y el mensaje dice explícitamente que **el objetivo suele ser legítimo y medibl
 
 ---
 
+### 1.7 Agregación: una tarjeta por problema, no una por aparición
+
+Los dos casos salieron de auditar documentos reales, y los dos son la misma lección: **dos tarjetas para un mismo defecto es lo que hace que un analista deje de leer el panel.**
+
+**`scanProhibitedInterventions`** hacía `matches.slice(0,2)` y empujaba **dos tarjetas idénticas** a propósito. Sobre los dos documentos reales `"Planned Ignoring"` salía duplicado. Ahora se recogen todas las apariciones de una intervención —en los dos idiomas y todas sus variantes—, se emite **una** tarjeta anclada en la primera, y la descripción dice cuántas veces aparece y con qué grafías, para que el analista las encuentre todas.
+
+**`scanSTOIntegrity`** deduplicaba por el texto coincidente, así que `«STO#2: STO#1:»`, `«STO#3: STO#1:»` y `«STO#4: STO#1:»` contaban como problemas distintos: sobre una reevaluación real salieron **nueve tarjetas para un único defecto de copiado**. Ahora se agrega por regla y sale una, con la cuenta y hasta ocho etiquetas concretas listadas.
+
+**Efecto secundario que conviene conocer:** la deduplicación vieja no solo inflaba unas reglas, también **escondía** otras. `STO_DUP_MEASURE` mostraba una tarjeta porque las repeticiones coincidían en el texto; agregada, revela que son **once** cláusulas de medición repetidas. Misma tarjeta, cuenta correcta.
+
+Los topes de seguridad pasaron de contar *tarjetas* a contar *apariciones* (`cubos.<regla>.n >= 60`), que es lo que ahora crece.
+
+Las tres reglas de STO se agregan por separado, así que un documento con los tres defectos sigue recibiendo tres tarjetas, una por defecto.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.
