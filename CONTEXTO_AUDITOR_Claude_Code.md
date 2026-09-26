@@ -310,6 +310,26 @@ Así que la regla es de **corrección sin integrar, no de idioma**. Siempre `war
 
 ---
 
+### 1.13 Edad del cliente en un campo etiquetado (`ageFromLabeledField`)
+
+**El hueco lo encontró un documento real, no una prueba.** En el assessment inicial de Abrahan, `FL_CORE_MALADAPTIVE_DOMAIN` decía *"no se pudo determinar la edad del cliente"* mientras el propio documento traía `Recipient's DOB: 12/29/2015 Recipient's Age: 10 years`. La causa era deliberada: `resolveAgeYears` solo usaba los tres patrones de prosa de `scanAgeConsistency` (`is X years old`, `X-year-old child/male`, `tiene X años`), estrechos a propósito porque un `age X` suelto captura la edad de un hermano o un hito del desarrollo. Con la edad en el bloque de demográficos y no en la prosa, quedaba ciego. Misma familia que el bug de las fechas verticales: **el valor está al lado de su etiqueta y nadie lee la etiqueta.**
+
+**Lo que legitima leerlo es la etiqueta, no la cercanía.** `Recipient's Age` no puede ser la del hermano ni un hito. Por eso el campo etiquetado va **antes** que la prosa en `resolveAgeYears` (y después del perfil del cliente, que lo escribió el analista): la etiqueta es prueba, la prosa es heurística.
+
+**Los dos puntos van pegados a la palabra** (`/\b(?:edad|age)\s*(?:\((?:years?|años?)\))?\s*:/`). Ese solo detalle descarta de un golpe `Age of onset:`, `Age at diagnosis:`, `Age Equivalent:` y `Age Range:`, que no son la edad actual. Los calificadores que van **delante** los descarta `AGE_LABEL_BAD_PREFIX`: `Mother's/Father's/Sibling's Age`, `Developmental Age`, `Mental Age`, `Equivalent Age`, `Gestational Age`.
+
+**El número tiene que ABRIR el valor.** Es la lección de los tres falsos positivos de "una cifra pegada a la etiqueta equivocada": si el campo está vacío (`Recipient's Age: DOB: 12/29/2015`), no se toma el número del vecino, se devuelve `null`. La ventana son 28 caracteres y se corta en otro `:`, en un salto de línea o en un `|` de tabla. Una forma de fecha (`12/29/2015`) o un rango normativo (`3-0 to 21-11`) se rechazan antes de mirar el número.
+
+**La fecha de nacimiento del mismo bloque NO se usa para calcular la edad.** Restar un DOB exige el reloj de la auditoría, y en este proyecto solo se comparan fechas que estén **las dos dentro del documento**.
+
+**Si dos campos etiquetados se contradicen en el año, no se elige bando** y la edad queda desconocida: la misma regla que ya regía para los patrones de prosa.
+
+**No-acción deliberada:** el campo **no alimenta `scanAgeConsistency`**. Meterlo cambiaría cuándo alerta esa regla clínica —un reassessment suele citar en la prosa la edad del assessment original, y entonces `AGE_INCONSISTENCY` empezaría a dispararse— y eso es decisión de Rolando, no de una refactorización. Hay dos casos en `edad_browser.js` que fijan el no-cambio.
+
+**Radio de impacto medido:** `resolveAgeYears` tiene **un solo consumidor**, `scanCoreInstruments`, y dentro de él dos reglas. El efecto real sobre los tres documentos fue **un solo hallazgo en un solo documento**: en Abrahan, `FL_CORE_MALADAPTIVE_DOMAIN` pasó de `warning` ("no se pudo determinar la edad") a **`blocker`** con la edad puesta, porque en una evaluación inicial la ausencia del dominio deniega la autorización y 10 ≥ 3. Los otros dos documentos quedaron byte a byte iguales: el `.docx` de Jade no tiene el campo y sigue leyendo 4 de la prosa; en Safira el campo dice 9, lo mismo que ya decía la prosa.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.
@@ -524,6 +544,7 @@ Tres exigencias implementadas sobre la herramienta misma:
 | Colores perdidos al exportar | Clases CSS | Inline hex en todo el reporte |
 | Auto-descarte de la crítica minó confianza | Crítica cambiaba status | Crítica solo anota |
 | "TBD" marcado como blocker en cada aparición | Regex de placeholder sin contexto | `classifyTbdContext`: fechas de servicio exentas; campos de meta de §6.2.2 siguen siendo blocker con cita |
+| Edad "no se pudo determinar" con la edad escrita en el documento | `resolveAgeYears` solo leía prosa; el campo etiquetado del encabezado no lo leía nadie | `ageFromLabeledField` §1.13: la etiqueta legitima el valor, y el número tiene que abrirlo |
 
 ---
 
