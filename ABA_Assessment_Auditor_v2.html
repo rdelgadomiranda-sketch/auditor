@@ -2543,15 +2543,43 @@ function scanProhibitedTerms(text){
   return findings;
 }
 
+/* Contenido CITADO o REPORTADO por el cuidador. Lo que un padre cuenta que
+   intento en casa no es el plan prescribiendolo.
+
+   Era el bloque 1 de isExempted; se extrae para poder reutilizarlo en las
+   intervenciones prohibidas, que no tenian esta exencion. La extraccion es
+   literal, asi que el comportamiento de isExempted no cambia en nada.
+
+   SOLO se reutiliza este bloque, y NO el resto de isExempted. El bloque 2 exime
+   por palabras -- physiological arousal, emotional regulation, anxiety disorder,
+   stress-related -- que existen para proteger el VOCABULARIO de estado emocional
+   cuando es lenguaje clinico legitimo. Aplicado a las intervenciones eximiria
+   justo lo que hay que marcar, y no como rareza sino como caso comun: una
+   intervencion prohibida se prescribe casi siempre PARA la activacion, la
+   regulacion emocional o la ansiedad. Comprobado antes de decidirlo: con el
+   isExempted completo quedaban exentas "Relaxation training will be taught to
+   reduce physiological arousal", "Sensory strategies will support emotional
+   regulation during transitions" y "Deep breathing will be used given his
+   anxiety disorder diagnosis" -- tres blockers legitimos.
+
+   Limitacion conocida: los patrones son solo en ingles ("mother reported"). Un
+   "la madre refiere que probo respiracion profunda" no se exime todavia. */
+function _quotedOrCaregiverReported(text,position){
+  const before=text.slice(Math.max(0,position-120),position).toLowerCase();
+  if(/(caregiver|mother|father|parent|guardian)\s+reported/.test(before))return true;
+  if(/(caregiver|mother|father|parent|guardian)\s+(stated|said|reports?)/.test(before))return true;
+  if(before.endsWith('"')||before.endsWith('“'))return true;
+  return false;
+}
+
 function isExempted(text,position){
   const before=text.slice(Math.max(0,position-120),position).toLowerCase();
   const after=text.slice(position,Math.min(text.length,position+120)).toLowerCase();
   const around=before+after;
 
-  // 1. Caregiver-reported or quoted content
-  if(/(caregiver|mother|father|parent|guardian)\s+reported/.test(before))return true;
-  if(/(caregiver|mother|father|parent|guardian)\s+(stated|said|reports?)/.test(before))return true;
-  if(before.endsWith('"')||before.endsWith('\u201c'))return true;
+  // 1. Caregiver-reported or quoted content (extraido, se reutiliza en las
+  //    intervenciones prohibidas; ver _quotedOrCaregiverReported).
+  if(_quotedOrCaregiverReported(text,position))return true;
 
   // 2. Medical/physiological contexts legitimate in assessments
   if(/caregiver\s+(stress|burden|distress|fatigue|burnout)/.test(around))return true;
@@ -2668,7 +2696,8 @@ function scanProhibitedInterventions(text){
     /* Esta funcion no tenia NINGUNA exencion, asi que "do not use deep
        breathing" se marcaba igual que prescribirlo. Es el mismo hueco que
        _termNegated cierra en scanProhibitedTerms: mencionar no es prescribir. */
-    let vivas=occ.filter(o=>!_termNegated(text,o.index));
+    let vivas=occ.filter(o=>!_termNegated(text,o.index)
+                            && !_quotedOrCaregiverReported(text,o.index));
     /* Y para la regla sensorial, el reforzador no es intervencion. */
     if(intv.reinforcerOk){
       vivas=vivas.filter(o=>{
