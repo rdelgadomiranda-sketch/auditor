@@ -723,7 +723,7 @@ const PLACEHOLDER_PATTERNS=[
   {regex:/\.\.\.+/g,description:'Possible ellipsis placeholder',severity:'notice'}
 ];
 
-/* ââ TBD / TBA: convención válida SOLO en fechas de servicio âââââââ
+/* ── TBD / TBA: convención válida SOLO en fechas de servicio ───────
    "TBD"/"TBA" es la convención con la que el analista marca fechas que
    todavía no están definidas porque dependen de la autorización o del
    servicio en ejecución: inicio de servicios, período de autorización,
@@ -733,7 +733,7 @@ const PLACEHOLDER_PATTERNS=[
    PERO la Florida Medicaid Behavior Analysis Services Coverage Policy
    (diciembre 2024, §6.2.2, incorporada por referencia en la Regla
    59G-4.125) enumera nueve elementos que CADA target, goal u objective
-   debe contener â entre ellos "Date of introduction", "Estimated date of
+   debe contener — entre ellos "Date of introduction", "Estimated date of
    mastery" y "Current level (baseline)". La norma pide una fecha
    *estimada*: precisamente porque no exige certeza, un "TBD" ahí es un
    elemento requerido faltante y motivo de denegación. Esos campos se
@@ -1809,6 +1809,7 @@ async function runAudit(){
     findings=findings.concat(scanAssessmentLimitations(text,state.currentDoc.docType));
     findings=findings.concat(scanEcobehavioralBarriers(text,state.currentDoc.docType));
     findings=findings.concat(scanAgeConsistency(text));
+    findings=findings.concat(scanUnintegratedEdits(text,state.currentDoc.docType));
     findings=findings.concat(scanCommunicationCongruence(text));
     findings=findings.concat(scanSTOIntegrity(text));
 
@@ -3166,6 +3167,10 @@ const AUDIT_REQUIREMENTS=[
    requisito:'La policy del pagador se titula "Applied Behavioral Analysis for Autism Spectrum Disorder" y sus criterios, incluida la seccion del CDE de la guia de Florida, son especificos del TEA. Para un diagnostico que no sea del espectro hay que verificar que politica de cobertura rige el analisis de conducta.',
    reglas:['MOL_POLICY_SCOPE_NOT_ASD'],
    nota:'Encontrado auditando un reassessment real cuyo diagnostico era TDAH y ODD: las reglas del CDE se callan y solo se avisa del alcance. La atribucion del diagnostico se comprueba con _cdeClientAsd, que rechaza las menciones de la historia familiar.'},
+  {id:'OFFICE_UNINTEGRATED_EDITS', fuente:'Convencion del consultorio', edicion:'-', seccion:'-', verificacion:'convencion', severidad:'warning',
+   requisito:'El documento que se envia no debe llevar correcciones sin integrar: prosa en otro idioma que la del documento, ni marcas de nota o revision (NOTA:, TODO, ??, <<...>>, revisar, pendiente).',
+   reglas:['EDIT_SPANISH_PROSE','EDIT_UNINTEGRATED_NOTE'],
+   nota:'NO hay fuente que exija el ingles: se busco en los cinco documentos de Molina y solo aparece el espanol como linea de atencion telefonica a los miembros. De ahi que sea convencion y warning, nunca blocker, y que el hallazgo diga que el espanol no esta prohibido. El defecto es la correccion sin integrar, no el idioma. Una cita textual del cuidador en espanol esta exenta: es practica legitima.'},
   {id:'CPT_UNIT_MATH', fuente:'Convencion del consultorio y fee schedule de Florida', edicion:'-', seccion:'-', verificacion:'convencion', severidad:'blocker',
    requisito:'Unidades = horas por semana x 4 unidades por hora x 26 semanas para un periodo de autorizacion de seis meses.',
    reglas:['CPT_UNITS_MATH'],
@@ -5387,6 +5392,122 @@ function scanHoursConsistency(text,canonical,docType){
         `Make the hours stated for ${code} in the narrative match the CPT/units table, and check the unit count derived from it.`,
         m[0].trim().slice(0,160));
     }
+  }
+
+  return findings;
+}
+
+/* ── Correccion sin integrar ──────────────────────────────────────────────
+   Observacion de Rolando: "una analista puede escribir en espanol las
+   correcciones al assessment por lo que es bueno puede hacer falta dar la
+   alerta sobre eso".
+
+   El encuadre que salio al pensarlo, y que cambia la regla: una frase en
+   espanol en medio del assessment no esta mal PORQUE SEA ESPANOL. Ningun
+   documento de Molina exige el ingles -- se busco -- y de hecho atiende a las
+   familias en espanol por telefono. Esta mal porque es UNA CORRECCION QUE
+   NADIE INTEGRO. El espanol es el sintoma mas visible, y el mismo defecto
+   ocurre en ingles: un "NOTA:", un "??", un "revisar esto" que se quedo dentro.
+
+   Asi que la regla es de CORRECCION SIN INTEGRAR, no de idioma. Siempre
+   warning: sin fuente que exija el ingles, la fila va marcada 'convencion' y
+   no 'primaria'. Categoria formatting_error, donde ya viven STO_DUP_LABEL y
+   STO_GLUED_REWRITE: dano mecanico al documento, no juicio clinico.
+
+   NO duplica lo que ya existe: TBD/TBA, [insert ...], [date], [fecha], XXXX y
+   los puntos suspensivos los coge scanPlaceholders; la reescritura pegada al
+   objetivo original, STO_GLUED_REWRITE.
+
+   EXENCION: una cita textual del cuidador en espanol es practica legitima -- el
+   pagador quiere el input de la familia documentado, y citarla en sus propias
+   palabras es defendible. Se reutiliza _quotedOrCaregiverReported.
+*/
+
+/* Palabras funcionales del espanol. Se excluyen a proposito las que tambien
+   son inglesas -- "no", "son", "si" -- porque en un documento en ingles
+   aparecen constantemente y solo restarian precision. */
+const EDIT_ES_FUNC=/\b(?:que|para|con|los|las|del|una|unos|unas|por|pero|como|esta|este|estos|estas|sus|muy|cuando|porque|tambi[eé]n|seg[uú]n|adem[aá]s|desde|hasta|sobre|entre|durante|cada|todos|todas|puede|debe|debe[rn]|hace|tiene|tienen|ser[aá]|est[aá]|estan|fue|fueron|han|hay|de|la|el|en|al|lo|le|su|ya|m[aá]s|donde|mismo|misma)\b/gi;
+const EDIT_ES_WINDOW=300;   // tamano de ventana
+const EDIT_ES_STEP=150;     // solape, para no partir un parrafo en dos
+const EDIT_ES_MIN=8;        // umbral validado: 0 falsos en ~600.000 car. en ingles
+
+/* Marcas de nota sin integrar. Solo las inequivocas: se descartaron
+   "needs review" (legitimo: "the plan needs review at 6 months") y
+   "check this" (legitimo en un formulario: "check this box"). */
+const EDIT_NOTE_MARKS=[
+  {re:/\bTODO\b/, q:'TODO'},
+  {re:/\bFIXME\b/, q:'FIXME'},
+  {re:/\bNOTA\s*:/i, q:'NOTA:'},
+  {re:/\bOJO\s*:/i, q:'OJO:'},
+  {re:/\bCOMENTARIO\s*:/i, q:'COMENTARIO:'},
+  {re:/\?\?+/, q:'??'},
+  {re:/\[\s*\?\s*\]/, q:'[?]'},
+  {re:/<<[^>\n]{0,60}>>/, q:'<<…>>'},
+  {re:/\b(?:revisar|corregir|verificar|completar|actualizar|pendiente|falta)\b/i, q:'nota en espanol'}
+];
+
+function scanUnintegratedEdits(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  const add=(ruleId,description,suggestedAction,matched,pos,n)=>findings.push({
+    id:uid(),ruleId,severity:'warning',category:'formatting_error',
+    description,matchedText:matched||'',
+    context:(pos!=null?extractContext(text,pos,String(matched||'').length||20):undefined),
+    position:pos,occurrences:n,suggestedAction,status:'open',createdAt:Date.now()
+  });
+
+  // ---- A. Prosa en espanol dentro de un documento en ingles --------------
+  const ventanas=[];
+  for(let i=0;i+40<text.length;i+=EDIT_ES_STEP){
+    const w=text.slice(i,i+EDIT_ES_WINDOW);
+    EDIT_ES_FUNC.lastIndex=0;
+    const hits=w.match(EDIT_ES_FUNC)||[];
+    if(hits.length<EDIT_ES_MIN)continue;
+    /* Cita textual del cuidador: practica legitima, no se marca. La exencion se
+       comprueba DONDE EMPIEZA EL ESPANOL, no al inicio de la ventana: con una
+       cita al principio del documento la ventana arranca en 0, no hay nada
+       detras que mirar y la exencion no se aplicaba. */
+    EDIT_ES_FUNC.lastIndex=0;
+    const primera=EDIT_ES_FUNC.exec(w);
+    const posEs=i+(primera?primera.index:0);
+    if(_quotedOrCaregiverReported(text,posEs))continue;
+    const n=hits.length;
+    ventanas.push({i,n,texto:w.replace(/\s+/g,' ').trim()});
+  }
+  // Ventanas solapadas del mismo parrafo cuentan como un solo pasaje.
+  const pasajes=[];
+  for(const v of ventanas){
+    const ult=pasajes[pasajes.length-1];
+    if(ult&&v.i-ult.fin<=EDIT_ES_WINDOW){ult.fin=v.i+EDIT_ES_WINDOW;continue;}
+    pasajes.push({i:v.i,fin:v.i+EDIT_ES_WINDOW,texto:v.texto});
+  }
+  if(pasajes.length){
+    const p0=pasajes[0];
+    add('EDIT_SPANISH_PROSE',
+      `Se detecta ${pasajes.length===1?'un pasaje':pasajes.length+' pasajes'} de prosa en español dentro de un documento redactado en inglés. Suele ser una corrección o una nota de la analista que no se integró al texto final. No es que el español esté prohibido —el pagador atiende a las familias en español y no exige el inglés por escrito—, pero un pasaje en otro idioma en medio del assessment se lee como un borrador sin terminar. Revíselo y déjelo integrado en el idioma del documento. Excepción: si es una cita textual de lo que dijo el cuidador, es práctica legítima y puede quedarse.`,
+      'Integrate or remove the passage so the submitted document reads in one language. If it quotes the caregiver verbatim, keep it and mark it clearly as a quotation.',
+      p0.texto.slice(0,160),p0.i,pasajes.length);
+  }
+
+  // ---- B. Marcas de nota que quedaron dentro ----------------------------
+  const marcas=[];
+  for(const m of EDIT_NOTE_MARKS){
+    const re=new RegExp(m.re.source,m.re.flags.includes('i')?'gi':'g');
+    let x;
+    while((x=re.exec(text))!==null){
+      if(_quotedOrCaregiverReported(text,x.index))continue;
+      marcas.push({q:m.q,match:x[0],index:x.index});
+      if(marcas.length>80)break;
+    }
+  }
+  if(marcas.length){
+    marcas.sort((a,b)=>a.index-b.index);
+    const formas=[...new Set(marcas.map(m=>m.q))];
+    const f=marcas[0];
+    add('EDIT_UNINTEGRATED_NOTE',
+      `Quedan marcas de nota o de revisión dentro del documento${marcas.length>1?` (${marcas.length} en total)`:''}: ${formas.map(s=>'«'+s+'»').join(', ')}. Son correcciones que no se integraron al texto final y que el revisor del pagador va a leer tal cual. Elimínelas o resuélvalas antes de enviar.`,
+      'Remove or resolve every editorial note left in the document before submission.',
+      f.match,f.index,marcas.length);
   }
 
   return findings;
@@ -7650,6 +7771,15 @@ const REPORT_CAT_LABELS={
     supervision:'Supervision',
     payer_timelines:'Payer timelines',
     cde_requirement:'CDE (diagnostic evaluation)',
+    // Faltaban: STO_DUP_LABEL y SCOPE_INTENSITY_* salian en el reporte con el
+    // nombre crudo de la categoria. 'language_style' y 'prohibited_concept' NO
+    // se añaden: son campos de definicion de PROHIBITED_TERMS que se remapean a
+    // emotional_state o prohibited_intervention al emitir, asi que nunca llegan
+    // a un hallazgo.
+    formatting_error:'Document integrity',
+    'formatting error':'Document integrity',
+    medical_necessity:'Medical necessity',
+    'medical necessity':'Medical necessity',
     discharge_criteria:'Discharge criteria',
     'discharge criteria':'Discharge criteria',
     'cde requirement':'CDE (diagnostic evaluation)',
