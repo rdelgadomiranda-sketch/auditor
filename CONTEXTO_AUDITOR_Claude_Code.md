@@ -237,6 +237,40 @@ Es el mismo error de fondo que el diseño vertical de fechas y que la ventana de
 
 ---
 
+### 1.10 Reforzador sensorial vs intervención sensorial
+
+**Decisión de Rolando:** *"que el reforzador sensorial no se marque como intervención"*. Los dos casos salen del mismo documento real:
+
+| texto | veredicto |
+|---|---|
+| *"**Reinforcers** varied and included verbal praise, preferred toys, and **sensory items** **delivered** across continuous, fixed ratio…"* | inventario de reforzadores → **no se marca** |
+| *"K. Leisure & Play (Sensory) **Definition**: Appropriate sensory seeking is defined as accessing designated **sensory tools** or activities…"* | programa de reemplazo sensorial → **`blocker`** |
+| *"**Teach requesting** for **sensory items** (**mand training**)"* | el ítem es el reforzador que se pide → **no se marca** |
+| *"**Reinforce engagement with** designated **sensory tools**"* | la herramienta es la conducta reforzada → **`blocker`** |
+
+Solo se aplica a `PROH_SENSORY`, marcada `reinforcerOk:true`. Las demás intervenciones prohibidas (respiración profunda, yoga) no tienen sentido como reforzador.
+
+**El verbo no basta.** La primera versión aceptaba `reinforc\w*`, y con eso *"**Reinforce** engagement with designated sensory tools"* quedaba exenta — pero ahí la herramienta sensorial es la conducta que **se refuerza**, no el reforzador que **se entrega**: eso sí es el programa. `INTV_REINFORCER_CTX` exige señal de **inventario** (`reinforcers` como sustantivo, `preference assessment`, `preferred items`) o de **entrega** (`delivered`, `earned`, `contingent on`, `FR3`, `mand`, `requesting for`).
+
+**Guarda de precedencia:** si la cláusula además nombra un programa (`definition`, `goal`, `replacement`, `target behavior`…), manda el programa. **No** se reutiliza `TERM_ROLE_PROGRAM_SENT` para esto, porque ese patrón incluye `reinforce` — que es justo la señal del reforzador — y se pisarían.
+
+---
+
+### 1.11 La negación, aplicada también a las intervenciones prohibidas
+
+`scanProhibitedInterventions` **no tenía ninguna exención**: ni `isExempted` ni negación. Así que *"do not use deep breathing"* se marcaba igual que prescribirlo. Es el mismo hueco que §1.8 cerró en la función hermana, y se cerró igual.
+
+**`instead of` y `rather than` se retiraron del detector**, y conviene saber por qué. La negación **solo mira hacia atrás**, así que no puede saber de qué lado de la frase está el término:
+
+- *"**Instead of** DRA, the RBT will use sensory strategies"* → eximía justo lo que hay que marcar: **un blocker perdido**.
+- *"**Instead of** yoga, use DRA"* → ahora avisa, aunque el documento hace lo correcto.
+
+Se acepta el aviso de más porque **perder un blocker de intervención prohibida es peor**, y porque prescribirla es más frecuente que esa forma de prohibirla. También corregían de menos la cuenta cuando el texto describe un déficit (*"engages in stereotypic behavior instead of accessing designated sensory tools"*).
+
+**Lo que NO se añadió, y es pregunta abierta:** `isExempted` —que exime lo citado como reporte del cuidador— sigue sin aplicarse a las intervenciones. *"La madre refiere que probó respiración profunda en casa"* se marca como intervención prohibida. Para la terminología esa exención ya existía; para las intervenciones es decisión clínica de Rolando, porque un cuidador que reporta algo no es el plan prescribiéndolo, pero tampoco está claro que deba callarse.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.

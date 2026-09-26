@@ -694,7 +694,7 @@ const ARTICLE_PATTERNS=[
 ];
 
 const PROHIBITED_INTERVENTIONS=[
-  {id:'PROH_SENSORY',severity:'blocker',variants:{en:['sensory strategy','sensory strategies','sensory alternative','sensory alternatives','sensory stimulation activity','sensory stimulation activities','sensory activity','sensory activities','sensory manipulation','sensory enrichment','sensory tools','sensory items'],es:['estrategia sensorial','estrategias sensoriales','alternativa sensorial','alternativas sensoriales','actividad sensorial','actividades sensoriales','estimulación sensorial','manipulación sensorial','herramientas sensoriales']},rationale:'No es una intervención ABA basada en evidencia.'},
+  {id:'PROH_SENSORY',severity:'blocker',reinforcerOk:true,variants:{en:['sensory strategy','sensory strategies','sensory alternative','sensory alternatives','sensory stimulation activity','sensory stimulation activities','sensory activity','sensory activities','sensory manipulation','sensory enrichment','sensory tools','sensory items'],es:['estrategia sensorial','estrategias sensoriales','alternativa sensorial','alternativas sensoriales','actividad sensorial','actividades sensoriales','estimulación sensorial','manipulación sensorial','herramientas sensoriales']},rationale:'No es una intervención ABA basada en evidencia.'},
   {id:'PROH_BREATHING',severity:'blocker',variants:{en:['deep breathing','deep breaths','breathing technique','breathing techniques','diaphragmatic breathing'],es:['respiración profunda','respiraciones profundas','técnica de respiración','técnicas de respiración','respiración diafragmática']},rationale:'No es una intervención ABA autorizada.'},
   {id:'PROH_RELAXATION',severity:'blocker',variants:{en:['relaxation training','relaxation technique','relaxation strategies','relaxation required','relax procedure'],es:['entrenamiento de relajación','técnica de relajación','estrategias de relajación']},rationale:'No es una intervención ABA autorizada.'},
   {id:'PROH_CALMING_TECH',severity:'blocker',variants:{en:['calming technique','calming techniques','calming strategy','calming strategies','calming activity','calming activities','calm count','calm count procedure','calm down procedure'],es:['técnica para calmar','técnicas para calmar','estrategia para calmar','actividad para calmar','procedimiento de calma']},rationale:'No es una intervención ABA autorizada.'},
@@ -2195,12 +2195,21 @@ function sectionContextAt(text, position){
       "significant" salia "signi fi cant". Asi que una frase sobre religion y
       espiritualidad quedaba "negada" por un fragmento de "significant". Las
       formas sin apostrofo no hacen falta: "do not" y "does not" ya estan.
+   3. "instead of" y "rather than" se QUITARON. Miran mal: la negacion solo
+      mira hacia atras, asi que en "Instead of DRA, the RBT will use sensory
+      strategies" exime justo lo que hay que marcar -- un blocker perdido. El
+      coste de quitarlas es avisar sobre "Instead of yoga, use DRA", donde el
+      documento hace lo correcto; se acepta porque perder un blocker de
+      intervencion prohibida es peor que un aviso de mas, y porque prescribirla
+      es mas frecuente que esa forma de prohibirla. Tambien corregia de menos la
+      cuenta cuando el texto describe un deficit ("engages in stereotypic
+      behavior instead of accessing designated sensory tools").
    2. "avoid" a secas describe la conducta DEL CLIENTE mucho mas a menudo que
       una prohibicion al equipo -- la evitacion es una funcion conductual y
       aparece en todos estos documentos ("Abrahan may avoid asking for help,
       leading to frustration"). Solo cuenta como prohibicion en forma de
       instruccion: tras un modal, o al principio de la clausula. */
-const TERM_NEGATION=/(?:\b(?:do\s+not|don['’]t|does\s+not|doesn['’]t|did\s+not|will\s+not|won['’]t|should\s+not|shouldn['’]t|must\s+not|cannot|can['’]t|never|without|refrain\s+from|instead\s+of|rather\s+than|no\s+(?:se\s+)?debe|evit(?:ar|e|ando)|nunca|en\s+lugar\s+de)\b|\b(?:will|shall|should|must|to|please)\s+avoid(?:ed|ing|s)?\b|(?:^|[.;:]\s+)avoid\b)/i;
+const TERM_NEGATION=/(?:\b(?:do\s+not|don['’]t|does\s+not|doesn['’]t|did\s+not|will\s+not|won['’]t|should\s+not|shouldn['’]t|must\s+not|cannot|can['’]t|never|without|refrain\s+from|no\s+(?:se\s+)?debe|evit(?:ar|e|ando)|nunca)\b|\b(?:will|shall|should|must|to|please)\s+avoid(?:ed|ing|s)?\b|(?:^|[.;:]\s+)avoid\b)/i;
 function _termNegated(text,index){
   let a=Math.max(0,index-260);
   let before=text.slice(a,index);
@@ -2610,6 +2619,36 @@ function scanArticlePatterns(text){
   return findings;
 }
 
+/* ── Reforzador sensorial vs intervencion sensorial ───────────────────────
+   Decision de Rolando: un item sensorial usado como REFORZADOR no es una
+   intervencion y no se marca.
+
+   Los dos casos, del mismo documento real:
+
+     REFORZADOR (no se marca)
+       "reinforcers varied and included verbal praise, physical proximity,
+        preferred toys, access to preferred games, and SENSORY ITEMS delivered
+        across continuous, fixed ratio, fixed interval..."
+
+     PROGRAMA (si se marca)
+       "K. Leisure & Play (Sensory) Definition: Appropriate sensory seeking is
+        defined as accessing designated SENSORY TOOLS or activities that
+        provide similar sensory input..."
+
+   El primero es un inventario de reforzadores; el segundo es un programa de
+   reemplazo construido sobre actividad sensorial, que es el defecto real. */
+/* Exige senal de INVENTARIO o de ENTREGA, no el verbo "reinforce" a secas.
+   Con el verbo suelto, "Reinforce engagement with designated sensory tools"
+   quedaba exenta -- y ahi la herramienta sensorial es la conducta que se
+   refuerza, no el reforzador que se entrega: eso SI es el programa.
+   Y pedir un item sensorial (mand training) es usarlo como reforzador, no
+   aplicar una intervencion sensorial. */
+const INTV_REINFORCER_CTX=/\b(?:reinforcers?\b|preference\s+assessment|preferred\s+(?:items?|activit\w+|toys?|games?|edibles?)|token\s+(?:economy|board)|earn(?:s|ed|ing)?|contingent\s+(?:up)?on|schedule\s+of\s+reinforcement|continuous\s+reinforcement|fixed\s+(?:ratio|interval)|variable\s+(?:ratio|interval)|FR\s?\d|VR\s?\d|deliver(?:s|ed|y|ing)?\b|mand(?:s|ing)?\b|mand\s+training|request(?:s|ed|ing)?\s+(?:for|a|an|the)?|refor(?:zador\w*|zamiento)|[ií]tems?\s+preferid\w+|evaluaci[oó]n\s+de\s+preferencias|pedir)\b/i;
+/* Guarda: si la clausula ademas nombra un programa, manda el programa. NO se
+   reutiliza TERM_ROLE_PROGRAM_SENT porque ese patron incluye "reinforce", que
+   es justo la senal del reforzador: se pisarian. */
+const INTV_PROGRAM_CTX=/\b(?:definitions?|definici[oó]n|replacement\s+(?:behavio\w*|program|skill)|skill\s+acquisition|goals?|objectives?|STO\s*#?\s*\d|\bLTO\b|target\s+behavio\w*|treatment\s+protocol|intervention|programa|objetivo|meta)\b/i;
+
 /* Una sola tarjeta por intervencion prohibida, no una por aparicion. Antes
    hacia matches.slice(0,2) y empujaba DOS tarjetas identicas: sobre un
    assessment real "Planned Ignoring" salia duplicado, y dos tarjetas para un
@@ -2625,20 +2664,34 @@ function scanProhibitedInterventions(text){
       }
     }
     if(!occ.length)continue;
-    occ.sort((a,b)=>a.index-b.index);
-    const first=occ[0];
+
+    /* Esta funcion no tenia NINGUNA exencion, asi que "do not use deep
+       breathing" se marcaba igual que prescribirlo. Es el mismo hueco que
+       _termNegated cierra en scanProhibitedTerms: mencionar no es prescribir. */
+    let vivas=occ.filter(o=>!_termNegated(text,o.index));
+    /* Y para la regla sensorial, el reforzador no es intervencion. */
+    if(intv.reinforcerOk){
+      vivas=vivas.filter(o=>{
+        const cl=_termSentence(text,o.index,o.match.length);
+        return !(INTV_REINFORCER_CTX.test(cl)&&!INTV_PROGRAM_CTX.test(cl));
+      });
+    }
+    if(!vivas.length)continue;
+    vivas.sort((a,b)=>a.index-b.index);
+    const occVivas=vivas;
+    const first=occVivas[0];
     // Formas distintas de nombrarla, para que el analista las encuentre todas.
-    const formas=[...new Set(occ.map(o=>o.match))];
+    const formas=[...new Set(occVivas.map(o=>o.match))];
     findings.push({
       id:uid(),
       ruleId:'INT_'+intv.id,
       severity:intv.severity,
       category:'prohibited_intervention',
-      description:`Intervención prohibida detectada: "${first.match}"${occ.length>1?` (aparece ${occ.length} veces${formas.length>1?`, como ${formas.map(f=>'"'+f+'"').join(' y ')}`:''})`:''}. ${intv.rationale}`,
+      description:`Intervención prohibida detectada: "${first.match}"${occVivas.length>1?` (aparece ${occVivas.length} veces${formas.length>1?`, como ${formas.map(f=>'"'+f+'"').join(' y ')}`:''})`:''}. ${intv.rationale}`,
       matchedText:first.match,
       context:extractContext(text,first.index,first.match.length),
       position:first.index,
-      occurrences:occ.length,
+      occurrences:occVivas.length,
       suggestedAction:`Replace every occurrence with an authorized intervention compatible with the behavior's function (DRA, DRI, DRO, FCT, EXT, NCR, antecedent modification, prompting, etc.).`,
       status:'open',
       createdAt:Date.now()
