@@ -14,6 +14,20 @@
 
 ---
 
+## 1.1 Pagador activo (`PAYER`) — leer antes de tocar prompts
+
+**Molina Healthcare of Florida**, vigente desde julio 2026. Antes el nombre del pagador estaba escrito a mano en **seis** lugares, dos de ellos prompts de IA: al cambiar de aseguradora, el auditor seguía redactando para el pagador anterior **en silencio**. Ahora vive una sola vez, en `const PAYER={nombre,corto}` al inicio del `<script>`.
+
+- `PAYER.nombre` va en prosa y en los prompts; `PAYER.corto` en etiquetas de interfaz.
+- Cambiar de pagador = editar dos líneas. **No** volver a escribirlo a mano.
+- Se usa en: prompt conceptual (dos sitios), prompt de necesidad médica, marcador del formulario de apelación, y lista de no-traducir del prompt de traducción. Los cuatro están dentro de template literals — verificado ejecutando la página, no por grep.
+
+**Molina NO reemplaza a AHCA.** Su guía se declara *"based in the AHCA BA Services Coverage Policy (December 2024)"*: las reglas de Florida siguen vigentes y la capa de pagador se suma. Ver `FUNDAMENTO_LITERATURA.md` §5.
+
+**Lo que NO se hizo, a propósito:** el texto sugerido de supervisión del 10 % atribuía el requisito a "Sunshine Health requirements". **Ningún documento de Molina menciona el 10 %**, y la fila `BACB_SUPERVISION_10PCT` está marcada `verificacion:'busqueda'`. Cambiar el nombre habría inventado un requisito del pagador nuevo: se quitó la atribución y quedó solo "per BACB guidelines".
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.

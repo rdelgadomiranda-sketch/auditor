@@ -559,6 +559,25 @@ input,textarea,select{font-family:inherit;font-size:inherit;color:inherit}
 
 <script>
 /* ============================================================
+   PAGADOR ACTIVO
+   ============================================================
+   El nombre del pagador estaba escrito a mano en seis lugares, dos de ellos
+   prompts de IA. Al cambiar de aseguradora eso produce salidas dirigidas al
+   pagador equivocado, en silencio. Aqui vive una sola vez.
+
+   `nombre` es el nombre legal que va en prosa y en los prompts; `corto` es
+   para etiquetas de interfaz. Cambiar de pagador es editar estas dos lineas.
+
+   Molina Healthcare of Florida es el pagador vigente desde julio 2026. Su
+   guia de autorizacion se declara basada en la AHCA BA Services Coverage
+   Policy (diciembre 2024), de modo que las reglas de Florida NO se sustituyen:
+   la capa de pagador se suma. Ver FUNDAMENTO_LITERATURA.md, seccion 5. */
+const PAYER={
+  nombre:'Molina Healthcare of Florida',
+  corto:'Molina'
+};
+
+/* ============================================================
    STORAGE LAYER (localStorage)
    ============================================================ */
 const LS = {
@@ -1113,8 +1132,8 @@ const CLINICAL_SAFETY_RULES = [
         findings.push({
           ruleId:'SUPERVISION_10PCT',severity:'warning',category:'regulatory_compliance',
           description:'The supervision plan does not explicitly state the minimum 10% supervision requirement. BACB guidelines and Florida Medicaid require that the supervising BCBA provides a minimum of 10% of the RBT’s total direct service hours per month.',
-          suggestedAction:'Add explicit statement: "The supervising BCBA will provide a minimum of 10% supervision per month of the total direct service hours delivered by the RBT, per BACB guidelines and Sunshine Health requirements."',
-          suggestedRewrite:'The supervising BCBA will provide a minimum of 10% supervision per month of the total direct service hours delivered by the RBT, in accordance with BACB guidelines and Sunshine Health authorization requirements.',
+          suggestedAction:'Add explicit statement: "The supervising BCBA will provide a minimum of 10% supervision per month of the total direct service hours delivered by the RBT, per BACB guidelines."',
+          suggestedRewrite:'The supervising BCBA will provide a minimum of 10% supervision per month of the total direct service hours delivered by the RBT, in accordance with BACB guidelines.',
           status:'open',createdAt:Date.now()
         });
       }
@@ -4652,9 +4671,9 @@ async function runConceptualAudit(text){
   
   const prompt=`You are a Board-Certified Behavior Analyst (BCBA) and Florida Medicaid ABA compliance expert conducting a deep clinical and regulatory audit of an ABA assessment or reassessment document. Your job is to identify issues that an automated terminology scanner would NOT catch — including logical, structural, functional, and regulatory problems.
 
-This document is for a SINGLE client in the state of Florida under Sunshine Health / Florida Medicaid managed care ABA coverage (CPT codes 97151, 97153, 97155, 97156). All Florida Medicaid § 59G-1.010 standards apply.
+This document is for a SINGLE client in the state of Florida under ${PAYER.nombre} / Florida Medicaid managed care ABA coverage (CPT codes 97151, 97153, 97155, 97156). All Florida Medicaid § 59G-1.010 standards apply.
 
-FLORIDA MEDICAID & SUNSHINE HEALTH SPECIFIC CHECKS (mark as BLOCKER):
+FLORIDA MEDICAID & ${PAYER.nombre} SPECIFIC CHECKS (mark as BLOCKER):
 A. Medical necessity documentation [Florida Medicaid Coverage Policy, December 2024, Section 59G-4.125]: must explicitly address all five elements required for Medicaid authorization: (1) functional impairment in daily activities, (2) safety risk to self or others, (3) escalation trajectory without treatment, (4) ABA as the evidence-based approach, (5) least-restrictive setting justification. Flag any missing element as a blocker — absence of any element is grounds for authorization denial.
 
 B. CPT 97156 caregiver training scope [Florida Medicaid Coverage Policy, December 2024]: CPT 97156 covers training caregivers to implement the behavior support plan. Flag if 97156 content describes: data collection by caregivers (not authorized — per CASP ABA Practice Guidelines 3rd Ed. 2024, caregivers do not collect clinical data), clinical assessment procedures, or procedures that belong under 97155. Caregiver training is strictly limited to three areas per CASP: (1) antecedent strategies and environmental modifications, (2) support of replacement/acquisition goals in natural routines, (3) delivery of reinforcement.
@@ -7158,7 +7177,7 @@ async function generateMedicalNecessityBrief(format){
   const btns=document.querySelectorAll('[onclick^="generateMedicalNecessityBrief"]');
   btns.forEach(b=>{b.disabled=true;b.dataset._t=b.textContent;b.textContent='Generando…';});
   try{
-    const prompt=`You are a Board-Certified Behavior Analyst (BCBA) drafting the MEDICAL NECESSITY justification section of a Florida Medicaid ABA (re)assessment, for a SINGLE client under Sunshine Health / Florida Medicaid managed care (CPT 97151/97153/97155/97156). The output is professional ENGLISH prose the analyst will paste directly into the assessment.
+    const prompt=`You are a Board-Certified Behavior Analyst (BCBA) drafting the MEDICAL NECESSITY justification section of a Florida Medicaid ABA (re)assessment, for a SINGLE client under ${PAYER.nombre} / Florida Medicaid managed care (CPT 97151/97153/97155/97156). The output is professional ENGLISH prose the analyst will paste directly into the assessment.
 
 ABSOLUTE GROUNDING RULE — ZERO FABRICATION: Use ONLY information present in the document and the extracted structure below. NEVER invent any number — no frequencies, durations, counts, trials, percentages, rates, hours, or unit totals. If a number is not documented, describe the matter qualitatively in observable terms, or list it under "gaps" for the BCBA to complete. Inventing data is Medicaid fraud risk.
 
@@ -7398,7 +7417,7 @@ function appealFormHTML(){
     ${hints}
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px">
       <div><label class="label" style="font-size:12px">Pagador / plan</label>
-        <input type="text" id="apPayer" class="input" placeholder="p. ej., Sunshine Health"></div>
+        <input type="text" id="apPayer" class="input" placeholder="p. ej., ${escapeHtml(PAYER.nombre)}"></div>
       <div><label class="label" style="font-size:12px">N.º de caso / autorización</label>
         <input type="text" id="apCase" class="input" placeholder="p. ej., AUTH-123456"></div>
       <div><label class="label" style="font-size:12px">Fecha del aviso de denegación</label>
@@ -7959,7 +7978,7 @@ async function translateReportToEnglish(htmlContent){
 STRICT RULES:
 - Output the SAME HTML: preserve every tag, attribute, inline style, class, and the overall structure exactly. Translate ONLY the human-readable text content between tags.
 - Translate Spanish text to professional clinical English. Leave text that is already in English unchanged.
-- Do NOT translate: clinical acronyms and standard names (BACB, CASP, DRA, DRI, DRO, FCT, DNRA, NCR, RIRD, FAST, MAS, IOA, CPT, IDEA, DSM-5, ICD-10, Florida Medicaid, Sunshine Health), proper names, client codes, dates, numbers, file names, or quoted document excerpts that are in English.
+- Do NOT translate: clinical acronyms and standard names (BACB, CASP, DRA, DRI, DRO, FCT, DNRA, NCR, RIRD, FAST, MAS, IOA, CPT, IDEA, DSM-5, ICD-10, Florida Medicaid, ${PAYER.nombre}), proper names, client codes, dates, numbers, file names, or quoted document excerpts that are in English.
 - Keep the function labels consistent: Escape, Attention, Tangible, Automatic, Multiple. Translate "Función"→"Function", "Reemplazos"→"Replacements", "Intervenciones"→"Interventions", "fuente"→"source", "no declarada"→"not stated", "NO coincide con la función de la conducta"→"DOES NOT match the behavior's function", "Sin reemplazo asociado"→"No associated replacement", "Sin intervenciones listadas"→"No interventions listed".
 - Do not add, remove, or reorder any content. Do not wrap the output in markdown fences or add commentary.
 
