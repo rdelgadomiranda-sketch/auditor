@@ -206,6 +206,37 @@ Las tres reglas de STO se agregan por separado, así que un documento con los tr
 
 ---
 
+### 1.8 Negación: mencionar no es prescribir (`_termNegated`)
+
+Encontrado auditando un **tercer** documento real, en un procedimiento de extinción:
+
+> *"Do not reprimand, redirect, give direct eye contact, **soothe**, give affection, or provide any type of attention (even negative) following the behavior."*
+
+El documento estaba haciendo **exactamente lo correcto** —instruir al RBT a NO consolar— y la regla lo marcaba como `blocker` por *"no es una intervención ABA autorizada"*. Es el mismo problema que R6 ya resuelve para la restricción: **mencionar no es prescribir**.
+
+`_termNegated` mira hacia atrás dentro de la cláusula, porque una prohibición suele gobernar una **lista** y el término puede ser el cuarto elemento. Se aplica a los conceptos fuera del marco ABA y a los cuatro términos acotados por rol. Si **todas** las apariciones están negadas, no hay hallazgo; si una sola no lo está, se reporta esa.
+
+**Dos trampas que costaron un rato, las dos encontradas sobre documentos reales:**
+
+1. **El apóstrofo no puede ser opcional.** Escrito `can'?t`, el patrón cazaba la palabra suelta `cant` — y la extracción de PDF parte la ligadura, así que de *"significant"* sale *"signi **fi** cant"*. Una frase sobre religión y espiritualidad quedaba «negada» por un fragmento de *significant*. Las formas sin apóstrofo no hacen falta: `do not` y `does not` ya están. **Es la segunda vez que la partición de ligadura muerde** (la primera fue `De fi nition:` en §1.6): en este proyecto hay que asumir que el PDF fabrica palabras falsas.
+2. **`avoid` a secas describe la conducta DEL CLIENTE** mucho más a menudo que una prohibición al equipo — la evitación es una función conductual y aparece en todos estos documentos (*"Abrahan may **avoid** or struggle with asking for help, leading to frustration"*). Solo cuenta como prohibición en forma de instrucción: tras un modal (`will avoid`) o al principio de la cláusula (`Avoid mindfulness…`).
+
+**Cómo se encontraron las dos:** no adivinando. Instrumenté la función real para que imprimiera la cláusula que ve y **qué alternativa del patrón dispara**. Reproducir la lógica a mano me dio primero un resultado contrario al de la función, que es exactamente el error que este método evita.
+
+---
+
+### 1.9 Horas directas: el código no arrastra la cifra de la partida siguiente
+
+Sobre el mismo tercer documento, R20 avisaba de un tratamiento **comprehensivo a 4 h/semana** cuando el plan pedía **30**. El texto es:
+
+> *"**30 hours per week** of direct behavior treatment by protocol (97153), **4 hours** per week … with protocol modification (97155/97155 HN combined)"*
+
+El patrón hacia delante desde el código saltaba el `)` y la coma y se llevaba **el 4 del 97155** como si fueran horas directas. El hueco entre el código y la cifra ya no puede contener `)`, `;` ni `,`: un cierre de paréntesis o una coma significan que la partida de la lista terminó.
+
+Es el mismo error de fondo que el diseño vertical de fechas y que la ventana de tabla en la terminología: **una cifra cerca de la etiqueta equivocada**. Conviene sospechar de cualquier patrón que salte de un rótulo a un número sin acotar qué puede haber en medio.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.
