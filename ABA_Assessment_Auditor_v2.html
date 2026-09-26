@@ -2781,6 +2781,10 @@ const AUDIT_REQUIREMENTS=[
    requisito:'El plan de transicion debe detallar como se proyecta reducir las horas a medida que se alcanzan las metas de transicion, con metas SMART de las habilidades necesarias para un nivel de cuidado menor, progreso documentado en cada reevaluacion, recursos comunitarios para mantener las ganancias tras el alta y mayor frecuencia de entrenamiento a cuidadores al acercarse a los criterios. Para miembros en edad escolar cuyo ABA a tiempo completo impide la asistencia, un plan documentado de traspaso a un entorno escolar.',
    reglas:['MOL_TRANSITION_NO_TITRATION','MOL_DISCHARGE_SCHOOL_TRANSITION'],
    nota:'La titracion de horas se exige en tres lugares distintos de la guia, senal de que falta a menudo.'},
+  {id:'MOL_POLICY_SCOPE_ASD', fuente:'Molina Clinical Policy No. 482', edicion:'06/10/2026', seccion:'titulo y alcance de la policy', verificacion:'primaria', severidad:'notice',
+   requisito:'La policy del pagador se titula "Applied Behavioral Analysis for Autism Spectrum Disorder" y sus criterios, incluida la seccion del CDE de la guia de Florida, son especificos del TEA. Para un diagnostico que no sea del espectro hay que verificar que politica de cobertura rige el analisis de conducta.',
+   reglas:['MOL_POLICY_SCOPE_NOT_ASD'],
+   nota:'Encontrado auditando un reassessment real cuyo diagnostico era TDAH y ODD: las reglas del CDE se callan y solo se avisa del alcance. La atribucion del diagnostico se comprueba con _cdeClientAsd, que rechaza las menciones de la historia familiar.'},
   {id:'CPT_UNIT_MATH', fuente:'Convencion del consultorio y fee schedule de Florida', edicion:'-', seccion:'-', verificacion:'convencion', severidad:'blocker',
    requisito:'Unidades = horas por semana x 4 unidades por hora x 26 semanas para un periodo de autorizacion de seis meses.',
    reglas:['CPT_UNITS_MATH'],
@@ -4085,6 +4089,28 @@ function _molParseDate(frag,nowMs){
    linea o celda. El corte en el salto de linea es la leccion de
    classifyTbdContext: sin el, "Date of plan:" se lleva la fecha de nacimiento
    del renglon siguiente. */
+/* Diseno vertical de tabla: la etiqueta en un renglon y el valor en el
+   siguiente no vacio. Es el formato real de los encabezados de esta consulta,
+   y con el las seis reglas de fechas estaban MUDAS:
+       Date Of Report
+       <blanco>
+       06/29/2026
+   Recuperarlo no puede reintroducir el bug historico, donde "Date of plan:"
+   se llevaba la fecha de nacimiento del renglon de abajo. El discriminador es
+   que un valor suelto NO TRAE ETIQUETA: si el renglon siguiente contiene ':'
+   es otro campo y se rechaza. Y si es largo, es un parrafo, no una celda. */
+function _molVerticalSegment(text,fromIndex){
+  const lineas=text.slice(fromIndex,fromIndex+400).split(/\r?\n/);
+  for(let i=1;i<lineas.length;i++){
+    const L=lineas[i].replace(/^[\s|]+/,'').replace(/[\s|]+$/,'');
+    if(!L)continue;                      // renglon en blanco: sigue buscando
+    if(L.length>40)return null;          // parrafo, no celda de tabla
+    if(L.indexOf(':')!==-1)return null;  // es OTRO campo etiquetado
+    return L;
+  }
+  return null;
+}
+
 function _molLabeledDate(text,labelRe,nowMs){
   if(!text)return null;
   const re=new RegExp(labelRe.source,labelRe.flags.replace('g','')+'g');
@@ -4098,7 +4124,11 @@ function _molLabeledDate(text,labelRe,nowMs){
     let seg=text.slice(fin, fin+60);
     const cut=seg.search(/[\n\r]|(?:\.\s)|\t|\|/);
     if(cut!==-1)seg=seg.slice(0,cut);
-    const d=_molParseDate(seg,nowMs);
+    let d=_molParseDate(seg,nowMs);
+    if(!d){                              // el valor puede ir en el renglon de abajo
+      const v=_molVerticalSegment(text,fin);
+      if(v)d=_molParseDate(v,nowMs);
+    }
     if(d)return {...d, etiqueta:m[0].trim(), index:m.index};
   }
   return null;
@@ -4115,7 +4145,11 @@ function _molLabeledRange(text,labelRe,nowMs){
     let seg=text.slice(fin, fin+120);
     const cut=seg.search(/[\n\r]|\t|\|/);
     if(cut!==-1)seg=seg.slice(0,cut);
-    const a=_molParseDate(seg,nowMs);
+    let a=_molParseDate(seg,nowMs);
+    if(!a){                              // el rango puede ir en el renglon de abajo
+      const v=_molVerticalSegment(text,fin);
+      if(v){const d=_molParseDate(v,nowMs);if(d){seg=v;a=d;}}
+    }
     if(!a)continue;
     const after=seg.slice(seg.indexOf(a.texto)+a.texto.length);
     if(!/^\s*(?:-|–|—|to|through|hasta|al)\s*/i.test(after))continue;
@@ -4344,6 +4378,39 @@ function _cdeFind(clauses,pred){
   return null;
 }
 
+/* ¿El TEA es diagnostico DE LA CLIENTA, o de un familiar?
+   Encontrado auditando un reassessment real: en 167.000 caracteres la UNICA
+   mencion de "Autism Spectrum Disorder" estaba en la historia familiar -- el
+   PADRE de la clienta lo tiene -- y MOL_DSM5_SEVERITY_MISSING lo tomo por
+   suyo, pidiendole un nivel de severidad del TEA a una nina cuyo diagnostico
+   es TDAH (F90.9) y ODD (F91.3). Comprobar que un diagnostico APARECE no es
+   comprobar que es SUYO: ese es justo el fallo que este proyecto evita.
+
+   El patron familiar es estrecho a proposito. "parent" a secas no sirve:
+   "parent training" y "family guidance" estan en cada documento de ABA y
+   dejarian el bloque mudo sobre clientes que SI tienen TEA. Exige atribucion
+   a un pariente ("her father", "family history", "genetic loading"). */
+const CDE_RE_FAMILY=/\b(?:family\s+(?:history|hx)|genetic\s+loading|maternal|paternal|(?:her|his|their|the|client'?s?)\s+(?:father|mother|dad|mom|brother|sister|sibling|siblings|twin|grandmother|grandfather|aunt|uncle|cousin|parents)\b|\d+\s+siblings?\b|antecedentes\s+familiares|su\s+(?:padre|madre|hermano|hermana))\b/i;
+// Codigos del TEA: en una lista de diagnosticos el codigo es del cliente.
+const CDE_RE_ASD_CODE=/\bF84\.\d\b|\b299\.0\d?\b/;
+// Codigo CIE-10 de salud mental que NO es TEA: prueba que hay un diagnostico
+// declarado y que no es del espectro.
+const CDE_RE_OTHER_DX_CODE=/\bF(?!84\.)\d{2}\.\d\b/;
+
+function _cdeClientAsd(text){
+  if(CDE_RE_ASD_CODE.test(text))return true;
+  const re=new RegExp(CDE_RE_ASD.source,'gi');
+  let m;
+  while((m=re.exec(text))!==null){
+    // Basta UNA mencion fuera de contexto familiar. En un assessment real el
+    // cliente tenia TEA y sus tres hermanos tambien: algunas menciones son
+    // familiares y otras no, y las suyas son las que cuentan.
+    const v=text.slice(Math.max(0,m.index-260), m.index+m[0].length+120);
+    if(!CDE_RE_FAMILY.test(v))return true;
+  }
+  return false;
+}
+
 function scanCdeSeparate(text,docType){
   const findings=[];
   if(!text)return findings;
@@ -4354,6 +4421,23 @@ function scanCdeSeparate(text,docType){
     matchedText:matchedText||'',status:'open',createdAt:Date.now()
   });
   const clauses=_cdeClauses(text);
+
+  /* La politica del pagador que auditamos es especifica del TEA: la MCP 482 se
+     titula "Applied Behavioral Analysis for Autism Spectrum Disorder" y la
+     seccion del CDE lo es tambien. Si el diagnostico de la clienta NO es del
+     espectro, estas ocho reglas no aplican y exigirlas seria inventar. Se
+     callan, y en su lugar se avisa de que hay que verificar que politica rige.
+     Si el diagnostico no se puede determinar, el bloque corre igual: callar
+     sobre lo desconocido esconderia hallazgos reales. */
+  if(!_cdeClientAsd(text)){
+    if(CDE_RE_OTHER_DX_CODE.test(text)){
+      add('MOL_POLICY_SCOPE_NOT_ASD','notice',
+        `El diagnóstico declarado no es del espectro autista, y la política de ${P} contra la que audita esta herramienta es específica del TEA: la Clinical Policy 482 se titula "Applied Behavioral Analysis for Autism Spectrum Disorder" y su sección del CDE lo es también. Por eso las reglas del CDE no se aplicaron a este documento. Verifique qué política de cobertura rige el análisis de conducta para este diagnóstico antes de enviar: los requisitos pueden ser otros.`,
+        'Confirm which payer coverage policy governs behavior analysis services for this diagnosis, and check its documentation requirements against this assessment. The ASD-specific CDE requirements were not applied.',
+        '');
+    }
+    return findings;
+  }
 
   /* ---- 1. CONCLUYENTE: el CDE presentado como el behavior assessment ----
      Las dos formas reales en que aparece. La primera es la declaracion

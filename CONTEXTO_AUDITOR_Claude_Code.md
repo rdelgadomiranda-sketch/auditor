@@ -42,6 +42,16 @@ Comparar fechas internas del documento además hace las reglas **reproducibles**
 
 **Ambigüedad de formato (`_molGap`).** `03/04/2026` es 3 de abril o 4 de marzo. Se asume EE. UU. (MM/DD) y esa lectura es la que **dispara**; las demás solo pueden **bajar** severidad, nunca disparar. Si alguna lectura salvaría el umbral, el hallazgo baja de `blocker` a `warning` y lo dice. Así no se avisa sobre un plan correcto solo porque su fecha se pueda leer de dos maneras.
 
+**Diseño vertical de tabla (`_molVerticalSegment`).** Encontrado auditando documentos reales, no sintéticos: los encabezados de esta consulta ponen la etiqueta en un renglón y el valor en el siguiente.
+
+```
+Date Of Report
+
+06/29/2026
+```
+
+Con el corte por renglón, **las seis reglas de fechas estaban mudas** sobre los documentos de verdad, y `MOL_PLAN_DATE_MISSING` era un falso positivo sobre un documento que sí traía la fecha. El valor se busca ahora en el siguiente renglón no vacío, y el discriminador que impide reabrir el bug de abajo es que **un valor suelto no trae etiqueta**: si el renglón contiene `:` es otro campo y se rechaza; si es largo, es un párrafo y no una celda. Asegurado con cuatro casos de no-regresión.
+
 **Bug histórico, no reintroducir:** el `\s*` final del regex de etiqueta se tragaba el salto de línea, con lo que el corte por renglón quedaba sin nada que cortar y `"Date of plan:"` se llevaba la fecha de nacimiento del renglón siguiente — la misma regresión que `classifyTbdContext`. `_molLabeledDate` y `_molLabeledRange` recortan el espacio final del match antes de rebanar.
 
 Reglas: `MOL_PLAN_DATE_MISSING` · `MOL_PLAN_AGE_60D` · `MOL_REAUTH_WINDOW` · `MOL_DX_ASSESSMENT_24M` · `MOL_REASSESS_INTERVAL` · `MOL_PLAN_COVERS_PERIOD`. Categoría `payer_timelines`.
@@ -58,6 +68,14 @@ Para Molina el **CDE** (Comprehensive Diagnostic Evaluation) y el **behavior ass
 - **No concluyentes (`warning` / `notice`).** El documento **no menciona** algo. Eso no prueba que falte en el paquete, igual que en `MOL_PLAN_DATE_MISSING` un encabezado no extraído no prueba que falte la fecha. El hallazgo pide **verificar**, y lo dice con esas palabras.
 
 **Lo que NO está aquí a propósito:** auditar el *contenido* del CDE —sus ocho elementos obligatorios, la observación directa, la firma—. Ese documento no es el que se sube. Cuando se auditen paquetes completos, ese es el bloque siguiente.
+
+**Atribución del diagnóstico (`_cdeClientAsd`), y por qué el bloque puede callarse entero.** El fallo más instructivo de todo el proyecto, encontrado auditando un reassessment real: en 167.000 caracteres la **única** mención de *"Autism Spectrum Disorder"* estaba en la historia familiar —**el padre** de la clienta lo tiene— y `MOL_DSM5_SEVERITY_MISSING` la tomó por suya, pidiéndole un nivel de severidad del TEA a una niña cuyo diagnóstico es TDAH (F90.9) y ODD (F91.3).
+
+> **Comprobar que un diagnóstico APARECE no es comprobar que es SUYO.** Es exactamente el fallo de probabilidad que este proyecto existe para evitar, y lo cometí igual.
+
+El patrón familiar es **estrecho a propósito**: `parent` a secas no sirve, porque *"parent training"* y *"family guidance"* están en cada documento de ABA y dejarían el bloque mudo sobre clientes que sí tienen TEA. Exige atribución a un pariente (`her father`, `family history`, `genetic loading`). Y basta **una** mención fuera de contexto familiar: en el otro documento real el cliente tenía TEA **y sus tres hermanos también**, así que algunas menciones son familiares y otras no, y las suyas son las que cuentan. Un código `F84.x` basta por sí solo, porque en una lista de diagnósticos el código es del cliente.
+
+**Alcance: la política del pagador es específica del TEA.** La MCP 482 se titula *"Applied Behavioral Analysis for Autism Spectrum Disorder"* y la sección del CDE también lo es. Si el diagnóstico de la clienta no es del espectro, **las ocho reglas se callan** y en su lugar sale `MOL_POLICY_SCOPE_NOT_ASD` (`notice`), que dice que hay que verificar qué política rige para ese diagnóstico. Decisión de Rolando. Si el diagnóstico **no se puede determinar**, el bloque corre igual y el aviso no sale: callar sobre lo desconocido esconderia hallazgos reales, y afirmar que la política no aplica sería inventar.
 
 **La guarda que evita el falso positivo caro (`MOL_CDE_DX_FROM_TOOL`).** Molina rechaza que una puntuación haga de diagnóstico: *"A clinician must state the diagnosis explicitly."* Pero *"diagnóstico confirmado por la Dra. Pérez con el ADOS-2"* es **correcto**. La regla exige un verbo de atribución entre instrumento y diagnóstico **y** que en la cláusula no haya ningún indicio de persona o institución (`Dr.`, `PhD`, `psychologist`, `hospital`…). Con clínico presente, calla.
 

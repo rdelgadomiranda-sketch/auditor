@@ -259,6 +259,16 @@ El plan de transicion debe detallar como se proyecta reducir las horas a medida 
 
 > ⚠️ La titracion de horas se exige en tres lugares distintos de la guia, senal de que falta a menudo.
 
+### `MOL_POLICY_SCOPE_ASD`
+
+**Fuente:** Molina Clinical Policy No. 482 — 06/10/2026, titulo y alcance de la policy  
+**Severidad:** notice  
+**Reglas que lo aplican:** `MOL_POLICY_SCOPE_NOT_ASD`
+
+La policy del pagador se titula "Applied Behavioral Analysis for Autism Spectrum Disorder" y sus criterios, incluida la seccion del CDE de la guia de Florida, son especificos del TEA. Para un diagnostico que no sea del espectro hay que verificar que politica de cobertura rige el analisis de conducta.
+
+> ⚠️ Encontrado auditando un reassessment real cuyo diagnostico era TDAH y ODD: las reglas del CDE se callan y solo se avisa del alcance. La atribucion del diagnostico se comprueba con _cdeClientAsd, que rechaza las menciones de la historia familiar.
+
 
 ## ⚠️ Solo búsqueda — sin verificar
 
@@ -308,4 +318,4 @@ Planned ignoring nunca para agresion, SIB, elopement o destruccion; response blo
 
 ---
 
-**Totales:** 33 requisitos · 29 verificados contra texto primario · 1 solo por búsqueda · 3 convención clínica.
+**Totales:** 34 requisitos · 30 verificados contra texto primario · 1 solo por búsqueda · 3 convención clínica.
