@@ -1802,6 +1802,7 @@ async function runAudit(){
     findings=findings.concat(scanAssessmentDomains(text,state.currentDoc.docType));
     findings=findings.concat(scanPayerDates(text,state.currentDoc.docType));
     findings=findings.concat(scanCdeSeparate(text,state.currentDoc.docType));
+    findings=findings.concat(scanDischargeCriteria(text,state.currentDoc.docType));
     findings=findings.concat(scanGoalsNotDsmCriteria(text,state.currentDoc.docType));
     findings=findings.concat(scanClientAssent(text,state.currentDoc.docType));
     findings=findings.concat(scanGoalAssessmentLink(text,state.currentDoc.docType));
@@ -2767,6 +2768,14 @@ const AUDIT_REQUIREMENTS=[
    requisito:'Entre las causas frecuentes de devolucion estan no especificar el nivel de severidad del DSM-5 para el TEA (nivel 1, 2 o 3) con los apoyos que requiere, porque su ausencia deja sin fundamento diagnostico la intensidad solicitada, y describir el deterioro funcional en un solo entorno o en ninguno: un diagnostico sin deterioro funcional documentado no establece por si solo la necesidad de servicios intensivos.',
    reglas:['MOL_DSM5_SEVERITY_MISSING','MOL_IMPAIRMENT_ONE_SETTING'],
    nota:'Salen de la lista de causas de devolucion, no de la de elementos obligatorios: por eso warning y notice, nunca blocker.'},
+  {id:'MOL_DISCHARGE_OBJECTIVE', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'secc. 8, Transition Planning & Discharge Criteria', verificacion:'primaria', severidad:'blocker/warning',
+   requisito:'El plan de transicion y alta debe establecerse AL INICIO de los servicios, no aplazarse hasta que el miembro este listo para el alta, y revisarse y actualizarse a lo largo del tratamiento. Los criterios de alta deben ser objetivos e individualizados, no vagos: "When clinically appropriate is not a discharge criterion". Deben individualizarse al miembro y a sus habilidades actuales, con criterios realistas para un nivel de apoyo menor (el ejemplo de la propia guia: 0 instancias de agresion durante 6 meses cuando el nivel actual es de 50 al dia).',
+   reglas:['MOL_DISCHARGE_DEFERRED','MOL_DISCHARGE_VAGUE','MOL_DISCHARGE_POLICY_BOILERPLATE','MOL_DISCHARGE_NOT_OBJECTIVE'],
+   nota:'Las cuatro reglas son excluyentes por diseno: un solo hallazgo para "los criterios no son objetivos", el que mejor describa el caso. La AUSENCIA de la seccion no se reporta aqui, ya la cubren SEC_TRANSITION y dischargePlan. Los cinco criterios de alta que la guia reproduce son los del pagador para cuando el alta procede, NO una lista que el plan deba copiar: copiarla es lo contrario de individualizar, de ahi MOL_DISCHARGE_POLICY_BOILERPLATE.'},
+  {id:'MOL_TRANSITION_PLAN_CONTENT', fuente:'Molina Healthcare of Florida, Comprehensive BA QRG', edicion:'julio 2026', seccion:'secc. 8, What a Strong Transition Plan Includes; secc. 5; checklist Transition Plan Update', verificacion:'primaria', severidad:'warning',
+   requisito:'El plan de transicion debe detallar como se proyecta reducir las horas a medida que se alcanzan las metas de transicion, con metas SMART de las habilidades necesarias para un nivel de cuidado menor, progreso documentado en cada reevaluacion, recursos comunitarios para mantener las ganancias tras el alta y mayor frecuencia de entrenamiento a cuidadores al acercarse a los criterios. Para miembros en edad escolar cuyo ABA a tiempo completo impide la asistencia, un plan documentado de traspaso a un entorno escolar.',
+   reglas:['MOL_TRANSITION_NO_TITRATION','MOL_DISCHARGE_SCHOOL_TRANSITION'],
+   nota:'La titracion de horas se exige en tres lugares distintos de la guia, senal de que falta a menudo.'},
   {id:'CPT_UNIT_MATH', fuente:'Convencion del consultorio y fee schedule de Florida', edicion:'-', seccion:'-', verificacion:'convencion', severidad:'blocker',
    requisito:'Unidades = horas por semana x 4 unidades por hora x 26 semanas para un periodo de autorizacion de seis meses.',
    reglas:['CPT_UNITS_MATH'],
@@ -4476,6 +4485,241 @@ function scanCdeSeparate(text,docType){
         'Document how the target behaviors affect daily life in at least two environments (home and school or community), with examples from each.',
         '');
     }
+  }
+
+  return findings;
+}
+
+/* ============================================================
+   CRITERIOS DE ALTA OBJETIVOS  (Molina, QRG secc. 8)
+   ============================================================
+   *"A transition and discharge plan must be established at the initiation of
+   BA services not deferred until the member is ready to discharge."*
+   *"Discharge criteria should be objective and individualized, not vague.
+   'When clinically appropriate' is not a discharge criterion."*
+   El ejemplo que da el pagador es cuantitativo: 0 instancias de agresion
+   durante 6 meses, cuando el nivel actual es 50 instancias/dia.
+
+   Es la logica de PLACEHOLDER_TBD_CONVENTION aplicada al alta: el campo
+   existe, pero su contenido no compromete a nada. La diferencia es que aqui
+   el placeholder no es la cadena "TBD" sino una FORMULA CLINICA VAGA, que
+   parece contenido y no lo es.
+
+   LO QUE ESTE BLOQUE NO HACE, A PROPOSITO:
+
+   1. NO avisa de que falte la seccion. Ya lo hacen SEC_TRANSITION (en
+      REQUIRED_SECTIONS) y `dischargePlan` (en scanAdminRequiredElements). Sin
+      ancla de alta en el texto, este bloque CALLA. Dos hallazgos para una
+      misma laguna es el ruido que hace que un analista deje de leer el panel.
+   2. NO reclama los cinco criterios de alta de AHCA que el pagador reproduce.
+      Esos son los criterios DEL PAGADOR para cuando el alta procede, no una
+      lista que el plan deba copiar: copiarla es justamente lo contrario de
+      "individualized to the specific member". De ahi que reproducirla sea un
+      hallazgo (MOL_DISCHARGE_POLICY_BOILERPLATE) y no un requisito.
+   3. NO toca la excepcion de TBD en FECHA de alta, que sigue siendo
+      convencion valida (TBD_DATE_CONTEXT incluye `discharge date`). Un
+      "Discharge criteria: TBD" ya produce blocker por la via existente, asi
+      que si hay un TBD en la region este bloque le cede la palabra.
+
+   JERARQUIA: exactamente UN hallazgo para "los criterios no son objetivos",
+   el que mejor describa el caso. Se diagnostica en orden -- diferido, formula
+   vaga, calco de la politica, nada medible -- y el primero que encaja habla.
+============================================================ */
+
+// Ancla: de donde arranca la region de alta / transicion.
+const ALT_RE_ANCHOR=/\b(?:discharge\s+criteri\w*|criteri\w*\s+for\s+discharge|discharge\s+plan(?:ning)?|transition\s+(?:and|&|\/)\s*discharge|discharge\s+(?:and|&|\/)\s*transition|transition\s+plan(?:ning)?|step[-\s]?down\s+plan|fading\s+plan|criterios?\s+(?:de|para)\s+(?:el\s+)?alta|plan\s+de\s+(?:alta|transici[oó]n))\b/i;
+// Encabezados que cierran la region. No hay slicer de secciones en el auditor:
+// REQUIRED_SECTIONS solo busca palabras clave en todo el texto. Cerrar por
+// encabezado y con un tope de caracteres es mas robusto que inventar uno.
+const ALT_HEADING_WORDS=/^(?:\d+[.)]\s*|[ivx]+[.)]\s*|[a-z]\.\s*)?(?:crisis|emergency|safety|supervision|consent|assent|signature|generali[sz]ation|maintenance|parent\s+training|caregiver\s+training|family\s+training|service\s+(?:schedule|delivery)|billing|units|care\s+coordination|coordination\s+of\s+care|recommendations?|appendix|references?|goals?|objectives?|target\s+behavior|progress|assessment|behavior\s+(?:reduction|intervention)|medical\s+history|background|summary|conclusion|prognosis|barriers?|telehealth|attendance|firmas?|metas?|objetivos?)\b/i;
+
+/* Region de alta. Se devuelven TODAS las apariciones: si el ancla cae tambien
+   en un indice o en una lista de comprobacion, esa region sale vacia de
+   contenido pero la de verdad aporta la evidencia. Por eso la evidencia
+   POSITIVA (criterio medible, titracion de horas) se busca en la UNION, y la
+   NEGATIVA (formula vaga) por clausula: asi un indice no puede producir un
+   falso positivo, solo dejar de aportar. */
+function _altRegions(text){
+  const out=[];
+  const re=new RegExp(ALT_RE_ANCHOR.source,'gi');
+  let m;
+  while((m=re.exec(text))!==null){
+    const lines=text.slice(m.index,m.index+1800).split(/\r?\n/);
+    const buf=[lines[0]];
+    for(let i=1;i<lines.length;i++){
+      const L=lines[i].trim();
+      // Un renglon corto con nombre de otra seccion cierra la region. Si el
+      // renglon vuelve a hablar de alta, no es otra seccion: es la misma.
+      if(L.length>0&&L.length<=80&&ALT_HEADING_WORDS.test(L)&&!ALT_RE_ANCHOR.test(L))break;
+      buf.push(lines[i]);
+    }
+    out.push(buf.join('\n'));
+    if(re.lastIndex<=m.index)re.lastIndex=m.index+1;
+  }
+  return out;
+}
+
+/* Criterio MEDIBLE. Deliberadamente no es "hay un digito": la seccion vecina
+   puede traer horas y fechas. Un criterio de alta empareja un numero con un
+   porcentaje, un sustantivo de conteo conductual o una duracion sostenida. */
+const ALT_RE_MEASURABLE=[
+  /\b\d+(?:[.,]\d+)?\s*%/,
+  /\b(?:0|zero|cero|no|fewer\s+than|less\s+than|at\s+most|no\s+more\s+than|under|below)\s+(?:\d+\s+)?(?:instances?|episodes?|occurrences?|incidents?|events?|times|instancias?|episodios?)\b/i,
+  /\b\d+\s*(?:instances?|episodes?|occurrences?|incidents?|events?|times|instancias?|episodios?)\b/i,
+  /\b\d+\s+consecutive\s+(?:sessions?|weeks?|months?|days?)\b/i,
+  /\bfor\s+(?:at\s+least\s+)?\d+\s+(?:consecutive\s+)?(?:weeks?|months?|days?)\b/i,
+  /\bdurante\s+\d+\s+(?:semanas?|meses|d[ií]as)\b/i,
+  /\bfrom\s+\d+\s+to\s+\d+\b/i,
+  /\b(?:reduc\w+|decreas\w+)\s+(?:by\s+)?\d+(?:[.,]\d+)?\s*%/i,
+  /\b\d+\s*(?:per|\/)\s*(?:day|week|month|hour|session)\b/i,
+  /\bbelow\s+baseline\b/i,
+  /\b\d+\s+(?:or\s+fewer|or\s+less)\b/i
+];
+const _altMedible=s=>ALT_RE_MEASURABLE.some(re=>re.test(s));
+
+/* Formula vaga. Solo cuenta si la clausula habla TAMBIEN de alta, transicion
+   o criterio: "el entrenamiento a cuidadores se aumentara segun se necesite"
+   es prosa legitima dentro de la misma seccion y no debe disparar nada. */
+const ALT_RE_VAGUE=[
+  /\b(?:when|as|if|once)\s+clinically\s+(?:appropriate|indicated|warranted|necessary)\b/i,
+  /\bclinically\s+appropriate\b/i,
+  /\b(?:when|if|as)\s+deemed\s+(?:clinically\s+)?(?:appropriate|necessary|indicated)\b/i,
+  /\bat\s+the\s+discretion\s+of\b/i,
+  /\bwhen\s+(?:the\s+)?(?:client|member|child|patient)\s+is\s+ready\b/i,
+  /\bwhen\s+no\s+longer\s+(?:necessary|needed|indicated)\b/i,
+  /\bcuando\s+(?:sea|resulte|se\s+considere)\s+(?:cl[ií]nicamente\s+)?apropiado\b/i,
+  /\ba\s+discreci[oó]n\s+del?\b/i
+];
+// Segundo nivel: tan generales que dentro de la seccion pueden ser prosa
+// legitima. Solo cuentan si la clausula habla del ALTA en si, no de la
+// transicion en general.
+const ALT_RE_VAGUE_WEAK=[
+  /\b(?:when|as|if)\s+appropriate\b/i,
+  /\bas\s+needed\b/i,
+  /\bseg[uú]n\s+(?:sea\s+)?necesario\b/i
+];
+const ALT_RE_TOPIC_STRICT=/\b(?:discharge|discharged|criteri\w*|alta\b|egreso)\b/i;
+const ALT_RE_TOPIC=/\b(?:discharge|discharged|criteri\w*|transition\w*|step[-\s]?down|fad(?:e|ed|ing)|titrat\w*|alta\b|egreso)\b/i;
+
+/* Calco de la lista de AHCA que el pagador reproduce. Copiarla es la respuesta
+   de manual a "individualized": parece criterio y no dice nada del miembro. */
+const ALT_POLICY_ECHO=[
+  /\bno\s+longer\s+meets?\s+(?:the\s+)?medical\s+necessity(?:\s+criteria)?\b/i,
+  /\bno\s+longer\s+engages?\s+in\s+maladaptive\s+behavio\w*\b/i,
+  /\bno\s+longer\s+poses?\s+a\s+barrier\s+to\s+participation\b/i,
+  /\b(?:level\s+of\s+)?functional\s+impairment\s+no\s+longer\s+justifies\b/i,
+  /\b(?:parent|guardian)\s+(?:or\s+guardian\s+)?withdraws?\s+consent\b/i
+];
+
+/* Aplazamiento. "will be UPDATED" queda fuera a proposito: el pagador EXIGE
+   que el plan se revise y actualice a lo largo del tratamiento. Lo que prohibe
+   es que se CREE mas tarde. */
+const ALT_RE_DEFERRED=[
+  /\b(?:discharge|transition|step[-\s]?down|fading)\s+(?:criteri\w*|plan(?:ning)?)\b[^.;\n]{0,100}\b(?:will\s+be\s+(?:developed|established|determined|created|written|defined|addressed|formulated)|to\s+be\s+(?:developed|established|determined|defined)|has\s+not\s+(?:yet\s+)?been\s+(?:developed|established|determined|written)|is\s+not\s+(?:yet\s+)?(?:developed|established|available|applicable)|will\s+be\s+(?:added|completed|provided)\s+(?:later|at\s+a\s+later)|remains?\s+pending|is\s+pending)\b/i,
+  /\b(?:will\s+be\s+(?:developed|established|determined|created|defined)|to\s+be\s+determined)\b[^.;\n]{0,100}\b(?:discharge|transition|step[-\s]?down)\s+(?:criteri\w*|plan(?:ning)?)\b/i
+];
+
+/* Titracion de horas. El pagador lo pide TRES veces (secc. 8, la lista de
+   reautorizacion de secc. 5 y la casilla "Transition Plan Update"): es senal
+   de que falta a menudo. */
+const ALT_RE_TITRATION=/\b(?:titrat\w+|taper\w+|step(?:ped|ping)?[-\s]?down|fad(?:e|ed|ing)\s+(?:out\s+)?(?:of\s+)?(?:hours|services|service\s+hours|intensity|support)|(?:reduc\w+|decreas\w+|lower\w*|scal\w+\s+back)\s+(?:the\s+)?(?:number\s+of\s+)?(?:hours|intensity|units|service\s+hours|weekly\s+hours)|hours\s+(?:will\s+be|are|to\s+be)\s+(?:gradually\s+)?(?:reduc\w+|decreas\w+|titrat\w+|taper\w+|faded)|gradual(?:ly)?\s+(?:reduc\w+|decreas\w+|fad\w+)|from\s+\d+\s+(?:hours|hrs)[^.;\n]{0,40}\bto\s+\d+\s*(?:hours|hrs)|reducci[oó]n\s+(?:gradual\s+)?de\s+(?:las\s+)?horas)/i;
+
+/* Traspaso al entorno escolar. Solo cuando el propio texto dice que el
+   miembro no esta en la escuela o recibe ABA en su lugar. */
+const ALT_RE_NO_SCHOOL=/\b(?:does\s+not\s+attend\s+school|not\s+(?:currently\s+)?enrolled\s+in\s+school|in\s+lieu\s+of\s+school|instead\s+of\s+school|full[-\s]time\s+(?:ABA|behavior\s+analysis|BA\s+services)|withdrawn\s+from\s+school|unenrolled|homebound|no\s+asiste\s+a\s+la\s+escuela)\b/i;
+const ALT_RE_SCHOOL_PLAN=/\b(?:transition(?:ing)?\s+(?:back\s+)?to\s+(?:a\s+)?school|school[-\s]based\s+(?:setting|services|placement|transition|program)|return\s+to\s+school|school\s+re-?entry|re-?enroll\w*\s+in\s+school|enrollment\s+in\s+school|reintegraci[oó]n\s+escolar)\b/i;
+
+function _altClauses(s){
+  return s.split(/(?:[.;!?](?=\s|$))|[\n\r]+|\t|\|/).map(x=>x.trim()).filter(x=>x.length>6);
+}
+function _altFind(clauses,pred){
+  for(const c of clauses){ if(pred(c)) return c.length>240?c.slice(0,240)+'…':c; }
+  return null;
+}
+
+function scanDischargeCriteria(text,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return findings;
+  const regiones=_altRegions(text);
+  // Sin ancla no hay nada que juzgar, y la ausencia de la seccion ya la
+  // reportan SEC_TRANSITION y dischargePlan. Este bloque calla.
+  if(!regiones.length)return findings;
+
+  const P=(typeof PAYER!=='undefined'&&PAYER&&PAYER.nombre)?PAYER.nombre:'el pagador';
+  const add=(ruleId,severity,description,suggestedAction,matchedText)=>findings.push({
+    id:uid(),ruleId,severity,category:'discharge_criteria',description,suggestedAction,
+    matchedText:matchedText||'',status:'open',createdAt:Date.now()
+  });
+  const union=regiones.join('\n');
+  const clauses=[];
+  for(const r of regiones)clauses.push(..._altClauses(r));
+  const medible=_altMedible(union);
+
+  // ---- A. Aplazado a mas adelante (concluyente) --------------------------
+  // El pagador lo prohibe con esas palabras: el plan se establece AL INICIO.
+  const mDif=_altFind(clauses,c=>ALT_RE_DEFERRED.some(re=>re.test(c)));
+  if(mDif){
+    add('MOL_DISCHARGE_DEFERRED','blocker',
+      `El documento aplaza el plan de alta o de transición a un momento posterior. ${P} exige que se establezca AL INICIO de los servicios de análisis de conducta, no cuando el miembro esté cerca del alta, y que se revise y actualice a lo largo del tratamiento. Escríbalo ahora, con los criterios de este miembro.`,
+      'Write the transition and discharge plan now, at initiation: objective criteria individualized to this member\'s current levels, the skills needed for a lower level of care, and how hours will be titrated as those criteria are met. Update it at each reassessment.',
+      mDif);
+  }
+
+  // ---- B. Formula vaga sin nada medible (concluyente) --------------------
+  // Se exige que NO haya criterio medible en toda la region: si lo hay, la
+  // formula vaga es prosa descuidada y no el criterio, y un blocker seria
+  // falso. Con formula vaga Y nada medible, lo escrito ya es el defecto.
+  if(!medible&&!mDif){
+    const mVago=_altFind(clauses,c=>
+      (ALT_RE_TOPIC.test(c)&&ALT_RE_VAGUE.some(re=>re.test(c)))
+      ||(ALT_RE_TOPIC_STRICT.test(c)&&ALT_RE_VAGUE_WEAK.some(re=>re.test(c))));
+    if(mVago){
+      add('MOL_DISCHARGE_VAGUE','blocker',
+        `Los criterios de alta se enuncian con una fórmula vaga y no hay ningún criterio medible en toda la sección. ${P} lo dice de forma literal: los criterios de alta deben ser objetivos e individualizados, y «cuando sea clínicamente apropiado» no es un criterio de alta. El ejemplo que da el propio pagador es cuantitativo: 0 instancias de agresión durante 6 meses, cuando el nivel actual es de 50 instancias al día.`,
+        'Replace the vague formula with measurable criteria tied to this member\'s current levels: name each target behavior, its current rate, the rate that would justify a lower level of care, and for how long it must be sustained (e.g., "0 instances of aggression for 6 consecutive months; current level 50 per day").',
+        mVago);
+    }
+  }
+
+  // ---- C. Calco de la lista de la politica (no concluyente) -------------
+  // Dos o mas de los criterios de AHCA reproducidos, sin nada medible. Es la
+  // respuesta de plantilla: parece criterio y no dice nada de este miembro.
+  const ecos=ALT_POLICY_ECHO.filter(re=>re.test(union)).length;
+  const yaHablo=findings.length>0;
+  if(!medible&&!yaHablo&&ecos>=2){
+    add('MOL_DISCHARGE_POLICY_BOILERPLATE','warning',
+      `La sección de alta reproduce ${ecos} de los criterios generales de la política (no cumple criterios de necesidad médica, ya no presenta conductas maladaptativas, el deterioro funcional ya no lo justifica…) sin un solo dato de este miembro. Esos son los criterios del pagador para cuando el alta procede, no una lista que el plan deba copiar: ${P} exige criterios individualizados a este miembro y a sus niveles actuales. Copiar la política es justo lo contrario.`,
+      'Keep the policy language only as a framing sentence, and state underneath the measurable criteria for THIS member: each target behavior, its current level, the level required for step-down, and the duration it must be maintained.',
+      '');
+  }
+
+  // ---- D. Nada medible, sin sintoma mas preciso (no concluyente) --------
+  // Ultimo eslabon de la jerarquia. Warning y no blocker porque los criterios
+  // pueden venir en una tabla que la extraccion no recupero. Y si en la region
+  // hay un TBD, la palabra la tiene la regla de TBD que ya existe.
+  const hayTbd=/\b(?:TBD|TBA)\b/.test(union);
+  if(!medible&&findings.length===0&&!hayTbd){
+    add('MOL_DISCHARGE_NOT_OBJECTIVE','warning',
+      `La sección de alta o transición no contiene ningún criterio medible: ni un porcentaje, ni un conteo de conducta, ni una duración sostenida. ${P} exige criterios objetivos e individualizados a este miembro y a sus habilidades actuales. Atención: si los criterios están en una tabla, puede que la extracción del .docx no la haya recuperado; verifíquelo en el documento.`,
+      'State the discharge criteria as measurable thresholds for this member: for each target behavior, its current level, the level that would justify a lower level of care, and how long it must be sustained.',
+      '');
+  }
+
+  // ---- E. Sin titracion de horas (no concluyente) -----------------------
+  if(!ALT_RE_TITRATION.test(union)){
+    add('MOL_TRANSITION_NO_TITRATION','warning',
+      `El plan de transición no describe cómo se proyecta reducir las horas a medida que se alcanzan las metas de transición. ${P} lo pide en tres lugares distintos de su guía —el plan de transición, la actualización en cada reautorización y la casilla de la lista de comprobación—, de modo que es una de las lagunas que más devuelven solicitudes.`,
+      'Add the projected titration: the current weekly hours, the milestones that trigger each reduction, and the target hours after each step (e.g., "at 3 consecutive months below 2 instances/week, reduce 97153 from 25 to 20 hours/week"). Pair it with increased caregiver training as the member approaches the criteria.',
+      '');
+  }
+
+  // ---- F. ABA a tiempo completo sin traspaso escolar (no concluyente) ---
+  if(ALT_RE_NO_SCHOOL.test(text)&&!ALT_RE_SCHOOL_PLAN.test(text)){
+    add('MOL_DISCHARGE_SCHOOL_TRANSITION','notice',
+      `El documento indica que el miembro no asiste a la escuela o recibe análisis de conducta a tiempo completo en su lugar, y no se detecta un plan documentado para trasladarlo a un entorno escolar. ${P} lo exige para los miembros en edad escolar cuyo ABA a tiempo completo impide la asistencia.`,
+      'Document the plan for transitioning to a school-based setting: the skills needed for the classroom, the timeline, the coordination with the school district, and how ABA hours will be adjusted around the school day.',
+      '');
   }
 
   return findings;
@@ -6723,6 +6967,8 @@ const REPORT_CAT_LABELS={
     supervision:'Supervision',
     payer_timelines:'Payer timelines',
     cde_requirement:'CDE (diagnostic evaluation)',
+    discharge_criteria:'Discharge criteria',
+    'discharge criteria':'Discharge criteria',
     'cde requirement':'CDE (diagnostic evaluation)',
     'payer timelines':'Payer timelines',
     florida_medicaid:'Florida Medicaid',

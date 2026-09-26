@@ -69,6 +69,30 @@ Reglas: `MOL_CDE_SUBSTITUTION` · `MOL_VINELAND_NOT_FBA` · `MOL_CDE_NOT_REFEREN
 
 ---
 
+### 1.4 Criterios de alta objetivos (`scanDischargeCriteria`)
+
+Molina, QRG §8: *"A transition and discharge plan must be established at the initiation of BA services not deferred until the member is ready to discharge"* y *"Discharge criteria should be objective and individualized, not vague. 'When clinically appropriate' is not a discharge criterion."* El ejemplo que da el pagador es cuantitativo: **0 instancias de agresión durante 6 meses, cuando el nivel actual es de 50 al día**.
+
+Es la lógica de `PLACEHOLDER_TBD_CONVENTION` aplicada al alta: el campo existe, pero su contenido no compromete a nada. La diferencia es que aquí el placeholder no es la cadena `TBD` sino una **fórmula clínica vaga**, que *parece* contenido y no lo es.
+
+**Tres cosas que el bloque NO hace, a propósito:**
+
+1. **No avisa de que falte la sección.** Ya lo hacen `SEC_TRANSITION` (en `REQUIRED_SECTIONS`) y `dischargePlan` (en `scanAdminRequiredElements`). Sin ancla de alta en el texto, el bloque **calla**. Dos hallazgos para una misma laguna es el ruido que hace que un analista deje de leer el panel.
+2. **No reclama los cinco criterios de alta de AHCA** que el pagador reproduce. Esos son los criterios *del pagador* para cuando el alta procede, no una lista que el plan deba copiar: copiarla es justo lo contrario de *"individualized to the specific member"*. De ahí que reproducirla sea un **hallazgo** (`MOL_DISCHARGE_POLICY_BOILERPLATE`) y no un requisito.
+3. **No toca la excepción de `TBD` en la FECHA de alta**, que sigue siendo convención válida (`TBD_DATE_CONTEXT` incluye `discharge date`). Un `"Discharge criteria: TBD"` ya produce blocker por la vía existente, así que si hay un TBD en la región el bloque **le cede la palabra**. Las cuatro lecturas de `classifyTbdContext` están aseguradas en `alta_browser.js` como regresión.
+
+**Jerarquía excluyente.** Exactamente **un** hallazgo para "los criterios no son objetivos", el que mejor describa el caso. Se diagnostica en orden —diferido → fórmula vaga → calco de la política → nada medible— y el primero que encaja habla. Sin esto, un plan malo recibiría cuatro tarjetas que dicen lo mismo.
+
+**La región, sin slicer de secciones.** El auditor no tiene uno: `REQUIRED_SECTIONS` solo busca palabras clave en todo el texto. `_altRegions` arranca en el ancla de alta y cierra en el siguiente renglón corto con nombre de otra sección, con tope de 1800 caracteres. Y el reparto de la evidencia es deliberado: la **positiva** (criterio medible, titración de horas) se busca en la **unión** de todas las regiones; la **negativa** (fórmula vaga) por **cláusula**. Así un ancla que caiga en un índice o en una lista de comprobación no puede producir un falso positivo, solo dejar de aportar.
+
+**El medible no es "hay un dígito".** La sección vecina trae horas, fechas y porcentajes de supervisión. Un criterio de alta empareja un número con un porcentaje, un sustantivo de conteo conductual (instancias, episodios, ocurrencias) o una duración sostenida. Asegurado con un caso donde el `10%` y las `12 consecutive weeks` del plan de supervisión **no** salvan a una sección de alta vaga.
+
+**Dos patrones corregidos antes de probar**, los dos falsos positivos sobre documentos correctos: un tercer patrón de aplazamiento marcaba *"el plan se revisará cuando el miembro se acerque al alta"*, que es exactamente lo que el pagador exige (se eliminó; el primer patrón ya cubre el aplazamiento real por su lista de verbos, que excluye `updated` a propósito); y `as needed` disparaba sobre *"el entrenamiento a cuidadores se ajustará según se necesite"* (pasó a un segundo nivel que exige que la cláusula hable del **alta**, no solo de la transición).
+
+Reglas: `MOL_DISCHARGE_DEFERRED` · `MOL_DISCHARGE_VAGUE` · `MOL_DISCHARGE_POLICY_BOILERPLATE` · `MOL_DISCHARGE_NOT_OBJECTIVE` · `MOL_TRANSITION_NO_TITRATION` · `MOL_DISCHARGE_SCHOOL_TRANSITION`. Categoría `discharge_criteria`.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.

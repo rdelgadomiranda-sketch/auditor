@@ -239,6 +239,26 @@ Entre las causas frecuentes de devolucion estan no especificar el nivel de sever
 
 > ⚠️ Salen de la lista de causas de devolucion, no de la de elementos obligatorios: por eso warning y notice, nunca blocker.
 
+### `MOL_DISCHARGE_OBJECTIVE`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, secc. 8, Transition Planning & Discharge Criteria  
+**Severidad:** blocker/warning  
+**Reglas que lo aplican:** `MOL_DISCHARGE_DEFERRED`, `MOL_DISCHARGE_VAGUE`, `MOL_DISCHARGE_POLICY_BOILERPLATE`, `MOL_DISCHARGE_NOT_OBJECTIVE`
+
+El plan de transicion y alta debe establecerse AL INICIO de los servicios, no aplazarse hasta que el miembro este listo para el alta, y revisarse y actualizarse a lo largo del tratamiento. Los criterios de alta deben ser objetivos e individualizados, no vagos: "When clinically appropriate is not a discharge criterion". Deben individualizarse al miembro y a sus habilidades actuales, con criterios realistas para un nivel de apoyo menor (el ejemplo de la propia guia: 0 instancias de agresion durante 6 meses cuando el nivel actual es de 50 al dia).
+
+> ⚠️ Las cuatro reglas son excluyentes por diseno: un solo hallazgo para "los criterios no son objetivos", el que mejor describa el caso. La AUSENCIA de la seccion no se reporta aqui, ya la cubren SEC_TRANSITION y dischargePlan. Los cinco criterios de alta que la guia reproduce son los del pagador para cuando el alta procede, NO una lista que el plan deba copiar: copiarla es lo contrario de individualizar, de ahi MOL_DISCHARGE_POLICY_BOILERPLATE.
+
+### `MOL_TRANSITION_PLAN_CONTENT`
+
+**Fuente:** Molina Healthcare of Florida, Comprehensive BA QRG — julio 2026, secc. 8, What a Strong Transition Plan Includes; secc. 5; checklist Transition Plan Update  
+**Severidad:** warning  
+**Reglas que lo aplican:** `MOL_TRANSITION_NO_TITRATION`, `MOL_DISCHARGE_SCHOOL_TRANSITION`
+
+El plan de transicion debe detallar como se proyecta reducir las horas a medida que se alcanzan las metas de transicion, con metas SMART de las habilidades necesarias para un nivel de cuidado menor, progreso documentado en cada reevaluacion, recursos comunitarios para mantener las ganancias tras el alta y mayor frecuencia de entrenamiento a cuidadores al acercarse a los criterios. Para miembros en edad escolar cuyo ABA a tiempo completo impide la asistencia, un plan documentado de traspaso a un entorno escolar.
+
+> ⚠️ La titracion de horas se exige en tres lugares distintos de la guia, senal de que falta a menudo.
+
 
 ## ⚠️ Solo búsqueda — sin verificar
 
@@ -288,4 +308,4 @@ Planned ignoring nunca para agresion, SIB, elopement o destruccion; response blo
 
 ---
 
-**Totales:** 31 requisitos · 27 verificados contra texto primario · 1 solo por búsqueda · 3 convención clínica.
+**Totales:** 33 requisitos · 29 verificados contra texto primario · 1 solo por búsqueda · 3 convención clínica.
