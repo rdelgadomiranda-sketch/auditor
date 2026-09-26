@@ -2228,6 +2228,109 @@ function _termSentence(text,position,len){
 // ahi la palabra es la etiqueta de la escala, no una eleccion del analista.
 const TERM_ROLE_INSTRUMENT=/\b(?:BASC(?:-3)?|\bPRQ\b|Vineland(?:-3|-II)?|SRS(?:-2)?|CARS(?:-2)?|ADOS(?:-2)?|ABAS|ABLLS(?:-R)?|VB-?MAPP|Conners|CBCL|T-?scores?|standard\s+scores?|percentiles?|scaled\s+scores?|sub-?scales?|\bscales?\b|\bindex\b|composite|domain\s+scores?|clinical\s+scales?|adaptive\s+scales?)\b/i;
 
+/* ── La version observable que el analista YA escribio ────────────────────
+   Patron real, visto en un assessment de la consulta:
+
+     N03 Sits and Waits Appropriately During Transitions
+     Definition: The ability to sit CALMLY and wait during transitions...
+     Procedure: the RBT will model appropriate sitting and waiting behaviors
+                (e.g., SITTING QUIETLY WITH HANDS IN LAP)
+
+   El analista sabe perfectamente que significa "calmly" en conducta
+   observable: lo escribio en el procedimiento y dejo la etiqueta en la
+   definicion. Rolando: "si lo escribio en el procedimiento lo recomendable es
+   ponerlo en la definicion y evitar ambiguedades, es decir que el auditor debe
+   hacer esta sugerencia. He notado mucho que los analistas se complican a la
+   hora de senalar el nombre del programa de reemplazo y usan definiciones con
+   palabras comprometidas y que desbaratan su trabajo clinico."
+
+   Asi que el hallazgo no se limita a senalar la palabra: busca en la MISMA
+   entrada del programa una redaccion observable y le dice donde esta. */
+
+// Marcadores que abren una entrada de programa. La extraccion de PDF parte la
+// ligadura "fi", asi que "Definition" llega como "De fi nition": hay que
+// tolerarlo o el limite de la entrada nunca se encuentra.
+const TERM_ENTRY_MARK=/(?:\b[A-Z]{1,3}\s?\d{1,3}\b(?=\s+[A-Z])|\bDe\s?fi\s?nition\s*:|\bDefinici[oó]n\s*:|\bTarget\s+Behaviou?r\s*:|\bReplacement\s+(?:Behaviou?r|Program|Skill)\s*:|\bProgram\s*:|\bProcedure\s*:|\bBarrier\s*:|\bSTO\s*#?\s*\d+|\bLTO\s*:)/g;
+// Redaccion observable: topografia, ausencia contable o una dimension medible.
+const TERM_OBSERVABLE_ANCHOR=/(?:hands?\s+(?:in|on)\s+(?:his\s+|her\s+|their\s+|the\s+)?(?:lap|table|desk)|feet\s+on\s+the\s+floor|remain(?:s|ing)?\s+(?:seated|in\s+(?:his|her|their)\s+seat)|stay(?:s|ing)?\s+seated|sit(?:s|ting)?\s+quietly|quiet\s+voice|conversational\s+volume|lower(?:s|ed|ing)?\s+(?:vocal\s+)?volume|without\s+(?:leaving|getting\s+up|vocaliz\w*|scream\w*|cry\w*|hitting|throwing)|does\s+not\s+(?:leave|get\s+up|scream|cry|hit|throw)|stop(?:s|ped)?\s+(?:crying|screaming)|for\s+at\s+least\s+\d+\s*(?:second|minute)|within\s+\d+\s*(?:second|minute)|body\s+oriented|zero\s+(?:instances|occurrences))/i;
+
+/* La entrada de programa que contiene la posicion: del marcador anterior al
+   siguiente, con tope. */
+function _termProgramEntry(text,position){
+  const desde=Math.max(0,position-1200), hasta=Math.min(text.length,position+1600);
+  const trozo=text.slice(desde,hasta);
+  const rel=position-desde;
+  const re=new RegExp(TERM_ENTRY_MARK.source,'g');
+  let ini=0,fin=trozo.length,m;
+  while((m=re.exec(trozo))!==null){
+    if(m.index<=rel)ini=m.index;
+    else {fin=m.index;break;}
+  }
+  // El siguiente marcador puede abrir una subseccion de la MISMA entrada
+  // (Barrier, Procedure): en ese caso la entrada sigue, no termina.
+  const resto=trozo.slice(fin,fin+40);
+  if(/^(?:\s*(?:Barrier|Procedure|De\s?fi\s?nition|Teaching)\b)/i.test(resto)){
+    const re2=new RegExp(TERM_ENTRY_MARK.source,'g');
+    re2.lastIndex=fin+1;
+    let m2, nuevoFin=trozo.length;
+    while((m2=re2.exec(trozo))!==null){
+      if(/^(?:Barrier|Procedure|De\s?fi\s?nition|Teaching)/i.test(m2[0]))continue;
+      nuevoFin=m2.index;break;
+    }
+    fin=nuevoFin;
+  }
+  return {texto:trozo.slice(ini,fin), offset:desde+ini};
+}
+
+/* Busca en la entrada una redaccion observable que NO sea la clausula donde
+   esta la palabra comprometida, y devuelve esa clausula recortada. */
+function _termObservableElsewhere(entry,posEnEntrada,len){
+  const propia=_termSentence(entry,posEnEntrada,len);
+  const partes=entry.split(/(?:[.;](?=\s|$))|[\n\r]|\t|\|/);
+  for(const parte of partes){
+    const t=parte.trim();
+    if(t.length<12)continue;
+    if(propia.indexOf(t)!==-1||t.indexOf(propia.trim())!==-1)continue;  // es la misma
+    if(!TERM_OBSERVABLE_ANCHOR.test(t))continue;
+    // Se prefiere el trozo entre parentesis, que es donde suele ir el "e.g.".
+    const par=t.match(/\(([^)]{10,160})\)/);
+    const elegido=(par&&TERM_OBSERVABLE_ANCHOR.test(par[1]))?par[1]:t;
+    return elegido.replace(/\s+/g,' ').replace(/^e\.?g\.?,?\s*/i,'').slice(0,180);
+  }
+  return null;
+}
+
+/* Quita la etiqueta redundante de una frase SIN romper la gramatica. Generar
+   ingles correcto con regex es fragil, y una reescritura mal formada es peor
+   que ninguna: el generador de documento corregido la escribiria tal cual en
+   un documento clinico. Asi que se prueban las formas conocidas y, si el
+   resultado no pasa la validacion, se devuelve null y no se sugiere nada. */
+function _termDropLabel(frase,label){
+  const L=escapeRegex(label);
+  const intentos=[
+    // "...Jade is calm and has stopped crying..." -> el verbo siguiente carga
+    new RegExp('\\b(?:is|was|are|were|be|being|been|remains?|remained|becomes?|became|stays?|stayed|appears?|appeared|seems?|seemed)\\s+'+L+'\\s+and\\s+','i'),
+    new RegExp('\\b'+L+'\\s+and\\s+','i'),
+    new RegExp('\\s*\\band\\s+'+L+'\\b','i'),
+    new RegExp('\\s*\\b'+L+'\\b','i')
+  ];
+  for(const re of intentos){
+    if(!re.test(frase))continue;
+    const out=frase.replace(re,re.source.indexOf('and\\s+')>0?'':' ').replace(/\s+/g,' ')
+                   .replace(/\s+([,.;])/g,'$1').trim();
+    // Validacion: dos auxiliares seguidos, un articulo colgando o una
+    // preposicion al aire significan que el recorte rompio la frase.
+    if(/\b(?:is|was|are|were|has|have|had)\s+(?:is|was|are|were|has|have|had)\b/i.test(out))continue;
+    if(/\b(?:the|a|an|and|or|of|to|with|in|for)\s*$/i.test(out))continue;
+    // Copula colgando: "The client is calm" -> "The client is" no es una frase.
+    if(/\b(?:is|was|are|were|be|been|being|remains?|remained|becomes?|became|stays?|stayed|appears?|appeared|seems?|seemed)\s*[.,;]?\s*$/i.test(out))continue;
+    if(/\b(?:is|was|are|were)\s+(?:stopped|ceased|remained)\b/i.test(out))continue;
+    if(out.length<12)continue;
+    return out;
+  }
+  return null;
+}
+
 /* Nombres PROPIOS de escalas y subdominios. Apareceran en todos los
    assessments de esta consulta: "Coping Skills" es un subdominio del Vineland-3
    (bajo Socializacion) y "Relational Frustration" una escala del BASC-3 PRQ.
@@ -2285,11 +2388,40 @@ function scanProhibitedTerms(text){
       const cat=term.category==='prohibited_concept'?'prohibited_intervention':'emotional_state';
       if(prog.length){
         const f=prog[0];
+        // ¿El analista ya escribió la versión observable en otra parte de la
+        // misma entrada del programa? Suele estar en el procedimiento.
+        const entry=_termProgramEntry(text,f.index);
+        // Tercer caso, visto en una reevaluacion real: la redaccion observable
+        // esta en la MISMA frase que la etiqueta ("is calm and has stopped
+        // crying, screaming... for at least 30 seconds"). Entonces la palabra
+        // es redundante y basta borrarla: no hay nada que reescribir.
+        const propia=_termSentence(text,f.index,f.match.length);
+        const redundante=TERM_OBSERVABLE_ANCHOR.test(propia)?propia.replace(/\s+/g,' ').trim().slice(0,200):null;
+        const obs=redundante?null:_termObservableElsewhere(entry.texto,f.index-entry.offset,f.match.length);
+        const veces=prog.length>1?` (${prog.length} veces así)`:'';
+        // El objetivo casi siempre es legítimo: lo que lo compromete es la
+        // etiqueta. El hallazgo lo dice, para no dar a entender que la meta
+        // está mal cuando lo que está mal es cómo se redactó.
+        const porQue='El objetivo en sí puede ser correcto y medible; lo que lo compromete es la palabra: no se puede contar, dos observadores la puntúan distinto y el IOA se cae. Y en una denegación el revisor no discute la meta, dice que el criterio no es replicable.';
+        const patron='Redáctela como antecedente → respuesta observable → criterio: ante [el antecedente concreto], [el cliente] [hace la respuesta contable], durante [tiempo] o en [N de 10] oportunidades, sin [conducta contable 1], [2] ni [3].';
         findings.push({
           id:uid(), ruleId:'TERM_'+term.id, severity:'blocker', category:cat,
-          description:`"${f.match}" aparece como intervención, programa de reemplazo u objetivo de adquisición de habilidades${prog.length>1?` (${prog.length} veces así)`:''}. Ahí nunca debe aparecer: no es una intervención ABA autorizada ni un objetivo observable y medible. ${term.rationale}`,
+          description: redundante
+            ? `"${f.match}" es REDUNDANTE aquí${veces}: la propia frase ya dice lo observable a su lado — «${redundante}». Bórrela y no hace falta reescribir nada más; lo medible ya está escrito. ${porQue}`
+            : obs
+            ? `"${f.match}" aparece en la definición del programa${veces}, pero la redacción observable YA ESTÁ ESCRITA en la misma entrada: «${obs}». Súbala a la definición y quite la etiqueta: el analista ya sabe qué hay que ver, solo lo puso en el lugar equivocado. ${porQue}`
+            : `"${f.match}" aparece como intervención, programa de reemplazo u objetivo de adquisición de habilidades${veces}. Ahí no debe aparecer. ${porQue} ${patron}`,
           matchedText:f.match, context:extractContext(text,f.index,f.match.length), position:f.index,
-          suggestedAction:`Rewrite the program target as the observable behavior it is meant to produce, and name the ABA procedure used. ${term.rationale_en||term.rationale}`,
+          suggestedRewrite: redundante
+            ? (_termDropLabel(redundante,f.match)||'')
+            : obs
+            ? `Definition: ${obs}`
+            : 'Definition: within [N] seconds of [antecedent], [client] [observable response] and maintains it for [duration], without [countable behavior 1], [2], or [3].',
+          suggestedAction: redundante
+            ? `Delete the word "${f.match}" from this sentence. The surrounding wording already states the observable, countable criterion, so nothing else needs rewriting.`
+            : obs
+            ? `Move the observable wording already written elsewhere in this program entry into the Definition, and delete the label. The objective is fine; only the wording is not.`
+            : `Rewrite the definition as antecedent, observable response and criterion, naming what an observer must see and count. ${term.rationale_en||term.rationale}`,
           status:'open', createdAt:Date.now()
         });
       }else if(dudosos.length){

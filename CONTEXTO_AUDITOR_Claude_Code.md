@@ -158,6 +158,34 @@ Solo se aplica a los cuatro términos marcados `roleScoped`. Los demás concepto
 
 2. **Nombres propios de escalas.** `Relational Frustration` es una escala del **BASC-3 PRQ** y `Coping Skills` un subdominio del **Vineland-3** (bajo Socialización). Van a aparecer en *todos* los assessments de esta consulta. `TERM_SCALE_NAME` más `TERM_SCORE_NEIGHBORHOOD` (dominios hermanos y valores de rango) los identifican, y se comprueban **después** de `program` para que `"Replacement program: Coping Skills"` siga siendo `blocker`. La causa raíz no era la oración sino **el respaldo por encabezado**, que en una tabla de puntuaciones encontraba antes una palabra de programa que una de antecedentes.
 
+**El hallazgo no solo señala: dice dónde está la redacción observable.** Rolando, sobre un caso real:
+
+> *"si lo escribió en el procedimiento lo recomendable es ponerlo en la definición y evitar ambigüedades, es decir que el auditor debe hacer esta sugerencia. He notado mucho que los analistas se complican a la hora de señalar el nombre del programa de reemplazo y usan definiciones con palabras comprometidas y que desbaratan su trabajo clínico."*
+
+El patrón, tal cual apareció en un assessment:
+
+```
+N03 Sits and Waits Appropriately During Transitions
+Definition: The ability to sit CALMLY and wait during transitions...
+Procedure: the RBT will model appropriate sitting and waiting behaviors
+           (e.g., SITTING QUIETLY WITH HANDS IN LAP)
+```
+
+El analista **ya sabe** qué significa "calmly" en conducta observable: lo escribió en el procedimiento y dejó la etiqueta en la definición. Así que `_termProgramEntry` acota la entrada del programa y `_termObservableElsewhere` busca ahí la redacción observable. Tres desenlaces:
+
+| caso | qué dice el hallazgo |
+|---|---|
+| la redacción observable está **en otra parte de la entrada** | la cita textual y dice *súbela a la definición*; `suggestedRewrite` = `Definition: <esa redacción>` |
+| está **en la misma frase** que la etiqueta | la palabra es **redundante**: bórrala y no hay nada más que reescribir |
+| no está en ninguna parte | da el patrón **antecedente → respuesta observable → criterio** y una plantilla |
+
+Y el mensaje dice explícitamente que **el objetivo suele ser legítimo y medible**, y que lo que lo compromete es la etiqueta. Importa: si el hallazgo da a entender que la meta está mal, el analista la borra en vez de reescribirla, y eso sí desbarata el trabajo clínico.
+
+**Dos detalles de implementación que costaron:**
+
+- **La extracción de PDF parte la ligadura `fi`**, así que `Definition:` llega como `De fi nition:`. Sin tolerarlo, el límite de la entrada nunca se encuentra. `TERM_ENTRY_MARK` lo admite.
+- **Una reescritura mal formada es peor que ninguna**, porque el generador de documento corregido la escribiría tal cual en un documento clínico. Quitar `calm` de *"Jade is calm and has stopped crying"* dejaba *"Jade **is has** stopped"*. `_termDropLabel` prueba las formas conocidas —incluida `is <etiqueta> and`, donde el verbo siguiente carga la frase— y **valida el resultado**: doble auxiliar, artículo colgando o cópula al aire ⇒ devuelve `null` y no se sugiere nada. La cópula colgante (`"The client is calm"` → `"The client is"`) se colaba y la atrapó una prueba propia.
+
 **Exención previa que no se tocó:** `isExempted` ya suprimía cualquier término citado directamente como reporte del cuidador (`"mother reported …"`), para **todos** los términos y no solo estos cuatro. `termRoleAt` es más amplio y consciente de la sección, pero no sustituye a aquélla.
 
 ---
