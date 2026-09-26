@@ -267,7 +267,23 @@ Solo se aplica a `PROH_SENSORY`, marcada `reinforcerOk:true`. Las demás interve
 
 Se acepta el aviso de más porque **perder un blocker de intervención prohibida es peor**, y porque prescribirla es más frecuente que esa forma de prohibirla. También corregían de menos la cuenta cuando el texto describe un déficit (*"engages in stereotypic behavior instead of accessing designated sensory tools"*).
 
-**Lo que NO se añadió, y es pregunta abierta:** `isExempted` —que exime lo citado como reporte del cuidador— sigue sin aplicarse a las intervenciones. *"La madre refiere que probó respiración profunda en casa"* se marca como intervención prohibida. Para la terminología esa exención ya existía; para las intervenciones es decisión clínica de Rolando, porque un cuidador que reporta algo no es el plan prescribiéndolo, pero tampoco está claro que deba callarse.
+**✅ RESUELTO — la exención del reporte del cuidador sí se aplica** (decisión de Rolando: *"aplica isExempted a las intervenciones prohibidas"*), pero **solo su bloque 1**, y la distinción importa.
+
+`isExempted` tiene dos bloques. El **1** exime lo **citado o reportado por el cuidador**: eso es lo que se extrajo a `_quotedOrCaregiverReported` y se reutiliza en `scanProhibitedInterventions`. La extracción es **literal**, así que el comportamiento de `isExempted` no cambia en nada para la terminología.
+
+El **bloque 2** se quedó fuera **a propósito**, y no por prudencia genérica: exime por palabras —`physiological arousal`, `emotional regulation`, `anxiety disorder`, `stress-related`— que existen para proteger el **vocabulario de estado emocional** cuando es lenguaje clínico legítimo. Aplicado a las intervenciones eximiría justo lo que hay que marcar, y **no como rareza sino como caso común**: una intervención prohibida se prescribe casi siempre *para* la activación, la regulación emocional o la ansiedad. Comprobado antes de decidirlo — con el `isExempted` completo quedaban exentas las tres:
+
+| texto | con isExempted completo | ahora |
+|---|---|---|
+| *"Relaxation training will be taught to reduce **physiological arousal**"* | exenta | **`blocker`** |
+| *"Sensory strategies will support **emotional regulation** during transitions"* | exenta | **`blocker`** |
+| *"Deep breathing will be used given his **anxiety disorder** diagnosis"* | exenta | **`blocker`** |
+
+Tres blockers legítimos que se habrían perdido en silencio. Hay un caso por cada uno en `exem_browser.js`, porque es el riesgo que vigilar si alguien amplía la exención más adelante.
+
+**Limitación conocida:** los patrones del bloque 1 son **solo en inglés** (`mother reported`, `father stated`). Un *"la madre refiere que probó respiración profunda"* no se exime todavía. Añadir las formas en español cambiaría también el comportamiento de la terminología, así que queda pendiente de decidirlo aparte.
+
+**Reparto entre las dos funciones, que conviene tener claro:** `yoga` es un **término** prohibido (`TERM_YOGA`, en `PROHIBITED_TERMS`) y no una intervención, así que lo coge `scanProhibitedTerms`. `scanProhibitedInterventions` no lo conoce. Un caso del harness lo fija, porque probar yoga con la función equivocada da un falso "pasa".
 
 ---
 
