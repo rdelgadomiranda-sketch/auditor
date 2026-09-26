@@ -1855,6 +1855,11 @@ async function runAudit(){
       // canonico, por eso corre aqui y no con las demas reglas deterministas.
       findings=findings.concat(scanFloridaServiceLimits(text,state.currentDoc.canonical));
 
+      // Coherencia interna de las horas. NO juzga cuantas se piden: eso lo
+      // negocia el analista con el seguro. Solo compara cifras que ambas
+      // digan ser la misma magnitud. Usa el canonico, por eso corre aqui.
+      findings=findings.concat(scanHoursConsistency(text,state.currentDoc.canonical,state.currentDoc.docType));
+
       // FL Medicaid 6.2.2: elementos requeridos por meta. El canonico solo
       // enriquece la descripcion con el numero de metas.
       findings=findings.concat(scanGoalRequiredElements(text,state.currentDoc.docType,state.currentDoc.canonical));
@@ -2675,7 +2680,7 @@ const AUDIT_REQUIREMENTS=[
   {id:'FL_4_2_2_LIMITS', fuente:'Florida Medicaid BA Services Coverage Policy', edicion:'diciembre 2024', seccion:'4.2.2', verificacion:'primaria', severidad:'blocker/warning',
    requisito:'Hasta 40 horas semanales de servicios de intervencion BA; tamano maximo de grupo de seis participantes; adaptive behavior treatment with protocol modification y family adaptive behavior treatment guidance solo por Lead Analyst o BCaBA.',
    reglas:['FL_LIMIT_WEEKLY_HOURS','FL_LIMIT_WEEKLY_HOURS_TOTAL','FL_LIMIT_GROUP_SIZE','FL_LIMIT_PROTOCOL_MOD_PROVIDER','FL_LIMIT_FAMILY_GUIDANCE_PROVIDER'],
-   nota:'Las reglas de horas son warning y no blocker: la metrica de intensidad esta en disputa entre CASP y el pagador. Ver CASP_INTENSITY_METRIC.'},
+   nota:'Las reglas de horas son warning y no blocker, por decision de Rolando: el auditor no juzga cuantas horas pedir, eso lo negocia el analista con el seguro. Lo que si audita es la coherencia interna (scanHoursConsistency). Sobre la metrica: Molina la zanjo a favor de CASP -- MCP 482 criterio 5 dice "25 direct hours per week", con la palabra direct -- pero NO zanjo el techo: el 40 de AHCA sigue siendo un total de lineas de intervencion, de modo que en Florida corren los dos medidores a la vez. Ver CASP_INTENSITY_METRIC.'},
   {id:'FL_4_2_2_PARENT', fuente:'Florida Medicaid BA Services Coverage Policy', edicion:'diciembre 2024', seccion:'4.2.2', verificacion:'primaria', severidad:'blocker',
    requisito:'El proveedor debe hacer todo esfuerzo por acomodar la participacion parental y documentarlo en las actualizaciones del plan. Si no es posible, deben documentarse las razones, los impactos potenciales y como se mitigan.',
    reglas:['FL_PARENT_NONPARTICIPATION_DOC','FL_PARENT_ACCOMMODATION_EFFORTS']},
@@ -4720,6 +4725,195 @@ function scanDischargeCriteria(text,docType){
       `El documento indica que el miembro no asiste a la escuela o recibe análisis de conducta a tiempo completo en su lugar, y no se detecta un plan documentado para trasladarlo a un entorno escolar. ${P} lo exige para los miembros en edad escolar cuyo ABA a tiempo completo impide la asistencia.`,
       'Document the plan for transitioning to a school-based setting: the skills needed for the classroom, the timeline, the coordination with the school district, and how ABA hours will be adjusted around the school day.',
       '');
+  }
+
+  return findings;
+}
+
+/* ============================================================
+   INCONGRUENCIA DE HORAS DENTRO DEL MISMO PLAN
+   ============================================================
+   Decision de Rolando, y es la correcta: el auditor NO juzga cuantas horas
+   pedir. Se piden 30, el seguro las acepta o las reduce, y esa negociacion no
+   es asunto del auditor. Lo que si es un defecto del documento es que en una
+   seccion se pidan unas horas y en otra del mismo plan aparezcan otras.
+
+   Por eso NO hay aqui ningun umbral. Ni el techo de 40 h de Florida, ni las
+   25 h directas de MCP 482, ni los rangos de CASP. Solo coherencia interna.
+   Misma forma que AGE_INCONSISTENCY: categoria 'internal_contradiction',
+   severidad 'warning', el sistema ALERTA y la decision es del analista.
+
+   EL PROBLEMA REAL DE ESTA REGLA SON LOS FALSOS POSITIVOS. Un plan bien
+   escrito esta lleno de cifras de horas distintas y todas correctas:
+   97153 a 25 h, 97155 a 4 h, 97156 a 2 h, "2 horas por sesion", "hasta 40 h
+   por semana" citando la politica, "previamente autorizado a 20 h". Comparar
+   toda cifra contra toda cifra avisaria en CADA plan y el panel dejaria de
+   servir. De ahi la regla que gobierna el bloque:
+
+     SOLO SE COMPARAN CIFRAS QUE AMBAS DIGAN SER LA MISMA MAGNITUD.
+
+   Un total declarado se compara con otro total declarado. Las horas de un
+   codigo, con la linea de ese mismo codigo. Nunca un total contra el desglose
+   de una linea, ni una cifra del pasado contra la que se solicita, ni un
+   techo de la politica contra lo pedido: no son la misma magnitud.
+
+   Y hay una exclusion que sale directo de la tension entre CASP y el pagador
+   (ver FUNDAMENTO §5.2): un total declarado que NO cuadra con la suma de
+   todas las lineas puede estar cuadrando con la suma de las lineas DIRECTAS,
+   porque CASP -- y MCP 482, que usa la palabra "direct" -- definen la
+   intensidad excluyendo supervision y entrenamiento a cuidadores. Eso no es
+   una incongruencia, es la otra metrica. Solo se avisa si el total no cuadra
+   con NINGUNA de las dos lecturas, y el hallazgo nombra las dos sumas para
+   que el analista vea cual habria cuadrado.
+============================================================ */
+
+// Etiqueta de TOTAL o de SOLICITUD: la cifra dice ser el total del plan.
+const HRS_RE_TOTAL_LABEL=/\b(?:total|totaling|totalling|combined|overall|altogether|aggregate|requested|requesting|request|recommended|recommending|recommendation|proposed|proposing|seeking|authorized\s+for|approved\s+for|solicitad\w*|total\w*|recomendad\w*|propuest\w*)\b/i;
+// Magnitudes que NO son el total solicitado. Cada una fue un falso positivo
+// que habria avisado en un plan correcto.
+const HRS_RE_NOT_TOTAL=/\b(?:previous(?:ly)?|prior|last|expiring|current(?:ly)?\s+authorized|current\s+authorization|was\s+authorized|had\s+been|historical|initially|at\s+intake|baseline|up\s+to|maximum|max\b|no\s+more\s+than|cap(?:ped)?|ceiling|limit(?:ed)?|covers?\b|policy|allowable|per\s+session|each\s+session|per\s+day|per\s+month|97151|97152|97153|97154|97155|97156|supervision|caregiver\s+training|parent\s+training|family\s+guidance|protocol\s+modification|anterior|previa\w*|hasta\b)\b/i;
+
+const HRS_RE_AFTER=/(\d{1,3}(?:[.,]\d+)?)\s*(?:hours?|hrs?)\s*(?:per\s*week|\/\s*week|a\s+week|weekly|semanales?|por\s+semana)/ig;
+// El separador NO puede cruzar el salto de linea: "Total hours\n5 goals are
+// targeted" daria 5 horas. Y "total hours" a secas se descarta por generico
+// ("total hours of caregiver training"). Exige la forma de campo o de celda.
+const HRS_RE_BEFORE=/\b(?:total\s+(?:weekly\s+hours|hours\s+per\s+week)|weekly\s+hours(?:\s+requested)?|hours\s+(?:per\s+week\s+)?requested|hours\s+requested|requested\s+hours|total\s+de\s+horas\s+semanales|horas\s+solicitadas)\b(?:[ \t]*[:=|][ \t]*|[ \t]+)(\d{1,3}(?:[.,]\d+)?)\b/ig;
+
+const HRS_DIRECT_CODES=/^(?:97153|97154)/;
+const HRS_ASSESS_CODES=/^(?:97151|97152)/;
+const HRS_TOL=0.5;   // las horas se escriben en cuartos; media hora de holgura
+
+/* Etiqueta que precede a la cifra, SIN cruzar el renglon ni la oracion. Es el
+   mismo cuidado que _molLabeledDate: el \s* final de un patron de etiqueta se
+   traga el salto de linea y entonces la cifra del renglon siguiente pasa por
+   propia. Aqui se recorta a mano por eso. */
+function _hrsWindow(text,index,len){
+  let before=text.slice(Math.max(0,index-90),index);
+  const cut=Math.max(before.lastIndexOf('\n'),before.lastIndexOf('\r'),
+                     before.lastIndexOf('. '),before.lastIndexOf('\t'),before.lastIndexOf('|'));
+  if(cut!==-1)before=before.slice(cut+1);
+  let after=text.slice(index+len,Math.min(text.length,index+len+40));
+  const cutA=after.search(/[\n\r]|(?:\.\s)|\t|\|/);
+  if(cutA!==-1)after=after.slice(0,cutA);
+  return before+' \u0001 '+after;
+}
+
+/* Totales declarados. Devuelve [{valor, texto, index}], ya filtrados. */
+function _hrsTotals(text){
+  const out=[];
+  HRS_RE_AFTER.lastIndex=0;
+  let m;
+  while((m=HRS_RE_AFTER.exec(text))!==null){
+    const v=parseFloat(String(m[1]).replace(',','.'));
+    if(!isFinite(v)||v<=0||v>168)continue;
+    const w=_hrsWindow(text,m.index,m[0].length);
+    if(HRS_RE_NOT_TOTAL.test(w))continue;       // no es el total solicitado
+    if(!HRS_RE_TOTAL_LABEL.test(w))continue;    // no dice ser un total
+    out.push({valor:v,texto:m[0].trim(),index:m.index});
+  }
+  HRS_RE_BEFORE.lastIndex=0;
+  while((m=HRS_RE_BEFORE.exec(text))!==null){
+    const v=parseFloat(String(m[1]).replace(',','.'));
+    if(!isFinite(v)||v<=0||v>168)continue;
+    const w=_hrsWindow(text,m.index,m[0].length);
+    if(HRS_RE_NOT_TOTAL.test(w))continue;
+    out.push({valor:v,texto:m[0].trim(),index:m.index});
+  }
+  return out;
+}
+
+/* Sumas del canonico, en las dos lecturas de la metrica. */
+function _hrsSums(canonical){
+  const cpt=(canonical&&Array.isArray(canonical.cpt))?canonical.cpt:null;
+  if(!cpt)return null;
+  let directa=0,todas=0,nDir=0,nTod=0;
+  const lineas=[];
+  for(const l of cpt){
+    if(!l||!l.code)continue;
+    const code=String(l.code).trim();
+    if(HRS_ASSESS_CODES.test(code))continue;        // evaluacion no es intervencion
+    const h=parseFloat(l.hoursPerWeek);
+    if(!isFinite(h)||h<=0)continue;
+    todas+=h;nTod++;
+    if(HRS_DIRECT_CODES.test(code)){directa+=h;nDir++;}
+    lineas.push(`${code}${l.modifier?' '+l.modifier:''}: ${h} h/sem`);
+  }
+  if(!nTod)return null;
+  const r=x=>Math.round(x*100)/100;
+  return {directa:r(directa),todas:r(todas),nDir,nTod,lineas};
+}
+
+function scanHoursConsistency(text,canonical,docType){
+  const findings=[];
+  if(!text)return findings;
+  if(docType==='iep')return findings;
+  const add=(ruleId,description,suggestedAction,matchedText)=>findings.push({
+    id:uid(),ruleId,severity:'warning',category:'internal_contradiction',
+    description,suggestedAction,matchedText:matchedText||'',status:'open',createdAt:Date.now()
+  });
+
+  // ---- 1. Dos totales declarados que no coinciden ------------------------
+  const totales=_hrsTotals(text);
+  const valores=[];
+  for(const t of totales)if(!valores.some(v=>Math.abs(v-t.valor)<=HRS_TOL))valores.push(t.valor);
+  if(valores.length>1){
+    const orden=valores.slice().sort((a,b)=>a-b);
+    const citas=[];
+    for(const v of orden){
+      const t=totales.find(x=>Math.abs(x.valor-v)<=HRS_TOL);
+      if(t&&!citas.includes(t.texto))citas.push(t.texto);
+    }
+    add('HOURS_TOTAL_CONFLICT',
+      `Las horas semanales solicitadas no coinciden entre secciones: el documento declara ${orden.join(' y ')} horas por semana en distintos lugares ("${citas.join('", "')}"). Verifique cuál es la cifra correcta y unifíquela en todo el plan, incluida la tabla de códigos y la justificación de necesidad médica. El sistema solo alerta; la decisión es del analista.`,
+      'Reconcile the requested weekly hours across every section of the plan: the service schedule, the CPT/units table, the intensity justification and the narrative must all state the same figure.',
+      citas.join(' / '));
+  }
+
+  // ---- 2. El total declarado no cuadra con ninguna lectura de las lineas -
+  // Si cuadra con la suma DIRECTA, no hay incongruencia: es la metrica de
+  // CASP, que MCP 482 adopta al decir "direct". Solo se avisa si no cuadra
+  // con ninguna de las dos, y se nombran las dos para que se vea.
+  const sumas=_hrsSums(canonical);
+  if(sumas&&valores.length===1&&sumas.todas>0){
+    const tot=valores[0];
+    const cuadraTodas=Math.abs(tot-sumas.todas)<=HRS_TOL;
+    const cuadraDirecta=sumas.nDir>0&&Math.abs(tot-sumas.directa)<=HRS_TOL;
+    if(!cuadraTodas&&!cuadraDirecta){
+      add('HOURS_TOTAL_VS_CPT_SUM',
+        `El total declarado de ${tot} horas por semana no cuadra con la tabla de códigos bajo ninguna de las dos lecturas: las líneas de intervención suman ${sumas.todas} h/sem en total${sumas.nDir?`, y ${sumas.directa} h/sem contando solo tratamiento directo (97153, 97154)`:''}. Líneas contabilizadas: ${sumas.lineas.join('; ')}. Los códigos de evaluación (97151, 97152) no se incluyen. Si la cifra declarada pretendía ser solo el tratamiento directo, habría cuadrado con ${sumas.directa} h/sem; no cuadra con ninguna, así que hay una cifra mal escrita. El sistema solo alerta; la decisión es del analista.`,
+        'Reconcile the stated weekly total with the CPT table, and state explicitly which metric the total uses: all intervention lines, or direct treatment only (excluding supervision and caregiver training).',
+        String(tot));
+    }
+  }
+
+  // ---- 3. Las horas de un codigo en la narrativa contra su propia linea --
+  if(sumas){
+    const porCodigo={};
+    for(const l of (canonical.cpt||[])){
+      if(!l||!l.code)continue;
+      const code=String(l.code).trim().match(/\d{5}/);
+      if(!code)continue;
+      const h=parseFloat(l.hoursPerWeek);
+      if(!isFinite(h)||h<=0)continue;
+      // Si un codigo trae mas de una linea (p. ej. 97155 y 97155 HN) no se
+      // puede saber a cual se refiere la narrativa: se descarta el codigo.
+      porCodigo[code[0]]=porCodigo[code[0]]===undefined?h:null;
+    }
+    const vistos=new Set();
+    const re=/\b(9715[1-6])\b[^.;\n]{0,80}?(\d{1,3}(?:[.,]\d+)?)\s*(?:hours?|hrs?)\s*(?:per\s*week|\/\s*week|a\s+week|weekly)|(\d{1,3}(?:[.,]\d+)?)\s*(?:hours?|hrs?)\s*(?:per\s*week|\/\s*week|a\s+week|weekly)[^.;\n]{0,80}?\b(9715[1-6])\b/ig;
+    let m;
+    while((m=re.exec(text))!==null){
+      const code=m[1]||m[4];
+      const h=parseFloat(String(m[2]||m[3]).replace(',','.'));
+      if(!code||!isFinite(h)||porCodigo[code]==null)continue;
+      if(Math.abs(h-porCodigo[code])<=HRS_TOL)continue;
+      if(vistos.has(code))continue;
+      vistos.add(code);
+      add('HOURS_CODE_CONFLICT',
+        `El código ${code} aparece con ${h} horas por semana en la narrativa y con ${porCodigo[code]} h/sem en la tabla de códigos del plan. Verifique cuál es la correcta y unifíquela. El sistema solo alerta; la decisión es del analista.`,
+        `Make the hours stated for ${code} in the narrative match the CPT/units table, and check the unit count derived from it.`,
+        m[0].trim().slice(0,160));
+    }
   }
 
   return findings;

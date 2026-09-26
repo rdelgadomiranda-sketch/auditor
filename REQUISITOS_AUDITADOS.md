@@ -25,7 +25,7 @@ La evaluacion inicial debe incluir administracion, puntuacion y reporte del Vine
 
 Hasta 40 horas semanales de servicios de intervencion BA; tamano maximo de grupo de seis participantes; adaptive behavior treatment with protocol modification y family adaptive behavior treatment guidance solo por Lead Analyst o BCaBA.
 
-> ⚠️ Las reglas de horas son warning y no blocker: la metrica de intensidad esta en disputa entre CASP y el pagador. Ver CASP_INTENSITY_METRIC.
+> ⚠️ Las reglas de horas son warning y no blocker, por decision de Rolando: el auditor no juzga cuantas horas pedir, eso lo negocia el analista con el seguro. Lo que si audita es la coherencia interna (scanHoursConsistency). Sobre la metrica: Molina la zanjo a favor de CASP -- MCP 482 criterio 5 dice "25 direct hours per week", con la palabra direct -- pero NO zanjo el techo: el 40 de AHCA sigue siendo un total de lineas de intervencion, de modo que en Florida corren los dos medidores a la vez. Ver CASP_INTENSITY_METRIC.
 
 ### `FL_4_2_2_PARENT`
 

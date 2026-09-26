@@ -93,6 +93,28 @@ Reglas: `MOL_DISCHARGE_DEFERRED` · `MOL_DISCHARGE_VAGUE` · `MOL_DISCHARGE_POLI
 
 ---
 
+### 1.5 Coherencia interna de las horas (`scanHoursConsistency`)
+
+**Decisión de Rolando, y es la correcta:** el auditor **no juzga cuántas horas pedir**. Se piden 30, el seguro las acepta o las reduce, y esa negociación no es asunto del auditor. Lo que sí es un defecto del documento es que en una sección se pidan unas horas y en otra del mismo plan aparezcan otras.
+
+Por eso **no hay aquí ningún umbral**: ni el techo de 40 h de Florida, ni las 25 h directas de MCP 482, ni los rangos de CASP. Solo coherencia interna. Misma forma que `AGE_INCONSISTENCY`: categoría `internal_contradiction`, severidad `warning`, el sistema **alerta** y la decisión es del analista. Sin fila en `AUDIT_REQUIREMENTS`, igual que `AGE_INCONSISTENCY`: la coherencia interna no es un requisito de una fuente externa, y `citationFor` devuelve `null` correctamente.
+
+**El problema real de esta regla son los falsos positivos.** Un plan bien escrito está lleno de cifras de horas distintas y todas correctas: 97153 a 25 h, 97155 a 4 h, 97156 a 2 h, "3 horas por sesión", "hasta 40 h por semana" citando la política, "previamente autorizado a 20 h", "asiste a la escuela 25 h". Comparar toda cifra contra toda cifra avisaría en **cada** plan y el panel dejaría de servir. De ahí la regla que gobierna el bloque:
+
+> **Solo se comparan cifras que AMBAS digan ser la misma magnitud.**
+
+Un total declarado con otro total declarado. Las horas de un código, con la línea de ese mismo código. Nunca un total contra el desglose de una línea, ni una cifra del pasado contra la que se solicita, ni un techo de la política contra lo pedido: no son la misma magnitud. Cada exclusión de `HRS_RE_NOT_TOTAL` es un falso positivo que habría avisado en un plan correcto, y cada una tiene su caso.
+
+**La exclusión que sale de la tensión CASP / pagador** (ver `FUNDAMENTO_LITERATURA.md` §5.2). Un total declarado que no cuadra con la suma de *todas* las líneas puede estar cuadrando con la suma de las **directas**, porque CASP —y MCP 482, que usa la palabra *direct*— definen la intensidad excluyendo supervisión y entrenamiento a cuidadores. Eso no es una incongruencia, **es la otra métrica**. `HOURS_TOTAL_VS_CPT_SUM` solo avisa si el total no cuadra con **ninguna** de las dos lecturas, y el hallazgo nombra las dos sumas para que el analista vea cuál habría cuadrado.
+
+**Bug histórico, tercera vez:** el `\s*` del separador entre etiqueta y cifra cruzaba el salto de línea, así que `"Total weekly hours\n5 goals are targeted"` daba 5 horas. El separador exige ahora forma de campo o de celda (`[ \t]*[:=|][ \t]*` o `[ \t]+`), sin cruzar renglón — la misma disciplina que `_molLabeledDate` y `classifyTbdContext`. Y `total hours` a secas se descartó por genérico ("total hours of caregiver training").
+
+**Guarda de ambigüedad en `HOURS_CODE_CONFLICT`:** si un código trae más de una línea en el canónico (p. ej. `97155` y `97155 HN`), no se puede saber a cuál se refiere la narrativa, así que **el código se descarta**.
+
+Reglas: `HOURS_TOTAL_CONFLICT` · `HOURS_TOTAL_VS_CPT_SUM` · `HOURS_CODE_CONFLICT`. Categoría `internal_contradiction`. Corre en el bloque de `runAudit` que tiene el canónico, junto a `scanFloridaServiceLimits`.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.
