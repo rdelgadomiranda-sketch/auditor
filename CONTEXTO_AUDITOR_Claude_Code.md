@@ -586,3 +586,24 @@ Tres exigencias implementadas sobre la herramienta misma:
 - Highlight amarillo opcional al generar el doc corregido (hoy siempre activo; recordar al usuario limpiarlo: Ctrl+A → resaltado "Sin color" antes de entregar).
 - Encabezados de sección propios de sus plantillas para afinar `sectionContextAt` (pedir lista a Rolando).
 - Veredicto go/no-go "listo para enviar" ya existe implícito vía score/banda; posible semáforo explícito.
+
+### Formulario del Vineland: dos cosas distintas, una decisión de Rolando (abierto)
+
+Salió al reauditar los tres documentos reales. **Rolando lo dejó para verlo en caliente**, así que nada de esto está implementado.
+
+La fuente primaria dice, textual, en el listado de la sección 4.2.1 de la Florida Medicaid BA Services Coverage Policy (diciembre 2024): *«Vineland-3 **Comprehensive Parent Interview Form** for all recipients, plus the Maladaptive Behavior Domain for recipients ages 3 years and older»*.
+
+Qué nombra cada documento: Jade y Safira no nombran formulario —el hallazgo `FL_CORE_VINELAND_FORM` es correcto y se arregla con una línea—, pero **Abrahan sí lo nombra**: *«Vineland-3 Comprehensive Parent/Caregiver Form on 08/06/2026»*.
+
+**Lo que hace el código hoy** (`FL_CORE_INSTRUMENT_PATTERNS.vinelandForm`):
+```
+/comprehensive\s+(?:parent|caregiver)\s+(?:interview\s+)?form|comprehensive\s+interview\s+form/i
+```
+Acepta `Comprehensive Parent Form` y `Comprehensive Caregiver Form` **sin** la palabra `interview`, así que ya trata el Parent/Caregiver Form como si cumpliera. Pero la **barra** de `Parent/Caregiver` rompe el `\s+`, y por eso Abrahan recibe el hallazgo con un mensaje que además **miente**: dice «no se identifica el formulario administrado» cuando sí está identificado.
+
+Las dos cosas no pueden ser verdad a la vez, y de eso depende el arreglo:
+
+- **Si el Parent/Caregiver Form cumple** → el hallazgo de Abrahan es un falso positivo y basta tolerar la barra en el patrón.
+- **Si NO cumple** → el hallazgo es correcto en el fondo pero equivocado en la forma, el patrón es demasiado permisivo para los tres documentos, y hace falta un mensaje distinto: «se administró el Parent/Caregiver Form; la sección 4.2.1 exige el Comprehensive Parent Interview Form».
+
+**Lo que no se sabe y no se debe inventar:** el Vineland-3 publica el Interview Form y el Parent/Caregiver Form como formularios distintos (entrevista semiestructurada frente a cuestionario de puntuación), y la política nombra el Interview Form. Pero el texto de la política **no dice** si Florida acepta el otro en la práctica, y eso es justo lo que decide la respuesta. Lo resuelve la experiencia de Rolando sobre qué le han aprobado y qué le han devuelto, no una búsqueda más.
