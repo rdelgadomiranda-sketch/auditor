@@ -694,7 +694,7 @@ const ARTICLE_PATTERNS=[
 ];
 
 const PROHIBITED_INTERVENTIONS=[
-  {id:'PROH_SENSORY',severity:'blocker',reinforcerOk:true,variants:{en:['sensory strategy','sensory strategies','sensory alternative','sensory alternatives','sensory stimulation activity','sensory stimulation activities','sensory activity','sensory activities','sensory manipulation','sensory enrichment','sensory tools','sensory items'],es:['estrategia sensorial','estrategias sensoriales','alternativa sensorial','alternativas sensoriales','actividad sensorial','actividades sensoriales','estimulación sensorial','manipulación sensorial','herramientas sensoriales']},rationale:'No es una intervención ABA basada en evidencia.'},
+  {id:'PROH_SENSORY',severity:'blocker',reinforcerOk:true,replacementWarn:{severity:'warning',rationale:'Aparece dentro de un programa de conducta de reemplazo, no como intervención prescrita. Enseñar una búsqueda sensorial apropiada que compita con la estereotipia mantenida automáticamente es práctica defendible (estimulación pareada, estímulos competidores), así que no se bloquea. Verifique que el programa se sostenga en la FUNCIÓN de la conducta y no en la palabra: describa el acceso y la medición en términos observables, porque un revisor que solo vea "sensorial" puede leerlo como una intervención no-ABA.',suggestedAction:'This appears inside a replacement-behavior program, not as a prescribed intervention, so it is reported as a warning rather than a blocker. Teaching an appropriate sensory-seeking response that competes with automatically maintained stereotypy is defensible practice (matched stimulation / competing stimuli). Confirm the program is justified by the behavior\u2019s function \u2014 state the automatic-reinforcement function explicitly, define the access and the measurement in observable terms, and avoid letting the word "sensory" carry the clinical weight, since a reviewer may otherwise read it as a non-ABA intervention.'},variants:{en:['sensory strategy','sensory strategies','sensory alternative','sensory alternatives','sensory stimulation activity','sensory stimulation activities','sensory activity','sensory activities','sensory manipulation','sensory enrichment','sensory tools','sensory items'],es:['estrategia sensorial','estrategias sensoriales','alternativa sensorial','alternativas sensoriales','actividad sensorial','actividades sensoriales','estimulación sensorial','manipulación sensorial','herramientas sensoriales']},rationale:'No es una intervención ABA basada en evidencia.'},
   {id:'PROH_BREATHING',severity:'blocker',variants:{en:['deep breathing','deep breaths','breathing technique','breathing techniques','diaphragmatic breathing'],es:['respiración profunda','respiraciones profundas','técnica de respiración','técnicas de respiración','respiración diafragmática']},rationale:'No es una intervención ABA autorizada.'},
   {id:'PROH_RELAXATION',severity:'blocker',variants:{en:['relaxation training','relaxation technique','relaxation strategies','relaxation required','relax procedure'],es:['entrenamiento de relajación','técnica de relajación','estrategias de relajación']},rationale:'No es una intervención ABA autorizada.'},
   {id:'PROH_CALMING_TECH',severity:'blocker',variants:{en:['calming technique','calming techniques','calming strategy','calming strategies','calming activity','calming activities','calm count','calm count procedure','calm down procedure'],es:['técnica para calmar','técnicas para calmar','estrategia para calmar','actividad para calmar','procedimiento de calma']},rationale:'No es una intervención ABA autorizada.'},
@@ -2743,6 +2743,69 @@ const INTV_REINFORCER_CTX=/\b(?:reinforcers?\b|preference\s+assessment|preferred
    es justo la senal del reforzador: se pisarian. */
 const INTV_PROGRAM_CTX=/\b(?:definitions?|definici[oó]n|replacement\s+(?:behavio\w*|program|skill)|skill\s+acquisition|goals?|objectives?|STO\s*#?\s*\d|\bLTO\b|target\s+behavio\w*|treatment\s+protocol|intervention|programa|objetivo|meta)\b/i;
 
+/* Conducta de REEMPLAZO: no exime, baja a warning. Decision de Rolando sobre
+   el caso que aparecio en un reassessment real: el programa "Appropriate
+   sensory seeking" ensena una respuesta que compite con la estereotipia
+   mantenida automaticamente, que es practica defendible, mientras que
+   prescribir actividad sensorial como tratamiento no lo es. El defecto que
+   queda es de redaccion, no de plan, asi que se avisa sin bloquear.
+
+   Las senales son estrechas a proposito, y estas se DESCARTARON despues de
+   medirlas en el documento real:
+     · "DRA"/"DRI" -- aparecen 46 veces, en la lista de intervenciones de CADA
+       conducta. Es boilerplate: no dice nada de esta mencion en concreto.
+     · "alternative behavior" -- esta dentro de ese mismo boilerplate,
+       "differential reinforcement of alternative behaviors (DRA)".
+     · "instead of" -- generico: "sensory strategies will be used instead of
+       extinction" es justo la prescripcion que SI debe bloquear.
+   Queda lo que solo puede significar que la mencion es la conducta del cliente
+   y no un tratamiento que se le aplica. */
+const INTV_REPLACEMENT_CTX=/\b(?:replacement\s+(?:behavio\w*|program|skill|response)|conductas?\s+de\s+reemplazo|appropriate\s+(?:\w+\s+){0,2}(?:seeking|alternatives?)|function(?:ally)?\s+equivalent|funcionalmente\s+equivalente|competing\s+stimul\w+|matched\s+stimul\w+|without\s+engaging\s+in\s+(?:stereotyp\w+|disruptive|problem|challenging))/i;
+
+/* Subsecciones de una MISMA entrada de programa, no entradas distintas. */
+const INTV_ENTRY_SUBSECTION=/^(?:De\s?fi\s?nition|Definici[oó]n|Procedure|Barrier|Teaching)\s*:/i;
+
+/* Se busca en la ENTRADA del programa, no en la clausula: la quinta aparicion
+   del caso real es "Reinforce engagement with designated sensory tools", cuya
+   clausula no lleva ninguna senal aunque este dentro del programa de reemplazo.
+   La clausula es un subconjunto de la entrada, asi que mirar la entrada cubre
+   las dos.
+
+   Y hace falta un paso mas, que solo se vio al medirlo: esa quinta aparicion
+   cae dentro del "Procedure:", y _termProgramEntry arranca justo ahi, dejando
+   fuera la "Definition:" que es la que nombra la conducta de reemplazo. Asi que
+   cuando la entrada EMPIEZA en una subseccion se extiende hacia atras hasta la
+   cabecera de la entrada, recorriendo las subsecciones hermanas.
+
+   La extension NO se hace si la entrada empieza en cualquier otro marcador
+   ("STO#1", "Target Behavior:"): ahi mirar hacia atras seria leer la entrada de
+   al lado, y es exactamente como una tabla de conductas de reemplazo acabaria
+   exculpando una prescripcion sensorial escrita mas abajo. Hay un caso
+   adversario para eso en reemp_browser.js.
+
+   _termProgramEntry se deja intacta a proposito: la comparte el bloque de
+   terminologia, y cambiarla moveria su comportamiento sin que nadie lo pida. */
+function _intvReplacementCtx(text,position){
+  const entrada=_termProgramEntry(text,position);
+  if(INTV_REPLACEMENT_CTX.test(entrada.texto))return true;
+  if(!INTV_ENTRY_SUBSECTION.test(entrada.texto))return false;
+  const desde=Math.max(0,entrada.offset-1200);
+  const previo=text.slice(desde,entrada.offset);
+  const marcas=[];
+  const re=new RegExp(TERM_ENTRY_MARK.source,'g');
+  let m;
+  while((m=re.exec(previo))!==null)marcas.push({index:m.index,texto:m[0]});
+  if(!marcas.length)return false;
+  // De la ultima marca hacia atras: las subsecciones hermanas se recorren, y la
+  // primera cabecera que aparece cierra la busqueda incluyendose.
+  let ini=null;
+  for(let i=marcas.length-1;i>=0;i--){
+    ini=marcas[i].index;
+    if(!INTV_ENTRY_SUBSECTION.test(marcas[i].texto))break;
+  }
+  return INTV_REPLACEMENT_CTX.test(previo.slice(ini)+entrada.texto);
+}
+
 /* Una sola tarjeta por intervencion prohibida, no una por aparicion. Antes
    hacia matches.slice(0,2) y empujaba DOS tarjetas identicas: sobre un
    assessment real "Planned Ignoring" salia duplicado, y dos tarjetas para un
@@ -2775,19 +2838,30 @@ function scanProhibitedInterventions(text){
     vivas.sort((a,b)=>a.index-b.index);
     const occVivas=vivas;
     const first=occVivas[0];
+    /* Baja a warning solo si TODAS las apariciones vivas estan en un programa
+       de reemplazo. Si el documento ademas prescribe actividad sensorial como
+       tratamiento en algun sitio, eso sigue siendo blocker: la tarjeta es una
+       sola y no puede tener dos severidades, asi que manda la peor. */
+    let sev=intv.severity, motivo=intv.rationale, accion=null, reemplazo=false;
+    if(intv.replacementWarn&&occVivas.every(o=>_intvReplacementCtx(text,o.index))){
+      sev=intv.replacementWarn.severity;
+      motivo=intv.replacementWarn.rationale;
+      accion=intv.replacementWarn.suggestedAction;
+      reemplazo=true;
+    }
     // Formas distintas de nombrarla, para que el analista las encuentre todas.
     const formas=[...new Set(occVivas.map(o=>o.match))];
     findings.push({
       id:uid(),
       ruleId:'INT_'+intv.id,
-      severity:intv.severity,
+      severity:sev,
       category:'prohibited_intervention',
-      description:`Intervención prohibida detectada: "${first.match}"${occVivas.length>1?` (aparece ${occVivas.length} veces${formas.length>1?`, como ${formas.map(f=>'"'+f+'"').join(' y ')}`:''})`:''}. ${intv.rationale}`,
+      description:`${reemplazo?'Actividad sensorial dentro de un programa de reemplazo':'Intervención prohibida detectada'}: "${first.match}"${occVivas.length>1?` (aparece ${occVivas.length} veces${formas.length>1?`, como ${formas.map(f=>'"'+f+'"').join(' y ')}`:''})`:''}. ${motivo}`,
       matchedText:first.match,
       context:extractContext(text,first.index,first.match.length),
       position:first.index,
       occurrences:occVivas.length,
-      suggestedAction:`Replace every occurrence with an authorized intervention compatible with the behavior's function (DRA, DRI, DRO, FCT, EXT, NCR, antecedent modification, prompting, etc.).`,
+      suggestedAction:accion||`Replace every occurrence with an authorized intervention compatible with the behavior's function (DRA, DRI, DRO, FCT, EXT, NCR, antecedent modification, prompting, etc.).`,
       status:'open',
       createdAt:Date.now()
     });
