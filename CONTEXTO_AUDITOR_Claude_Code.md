@@ -360,6 +360,50 @@ Queda `INTV_REPLACEMENT_CTX`: `replacement behavior/program/skill/response`, `co
 
 ---
 
+### 1.15 v2.1 y v2.2 (versión del 11 oct 2026, traída por Rolando)
+
+Rolando trajo el archivo ya trabajado. Se validó y se integró tal cual: **las reglas clínicas son suyas y no se tocaron.** `AUDITOR_RULES_VERSION` pasó a `2026.10.11-1`.
+
+**Lo que trae:**
+
+- **v2.1 — retirada de atención, no solo «planned ignoring».** `PLANNED_IGNORING_AGGRESSION` pasó de buscar la frase literal a buscar **cualquier** retirada de atención: `attention extinction`, `withhold/minimize/withdraw/remove attention`, y en segunda vuelta `looking away`, `turning away`, `no eye contact`, `leaving the room` —estas últimas solo si la vecindad habla de atención, ignorar o extinción, porque *looking away* a secas es una conducta del cliente. Lleva guardas de negación por delante y por detrás, y deduplica a 40 caracteres: una retirada, un hallazgo. Decisión del analista del 7 y 8 de octubre: en conductas peligrosas está contraindicada cualquier retirada de atención, y `EXT` en estas listas significa extinción de **escape** o de **acceso a un tangible**, nunca de atención.
+- **`DANGEROUS_BEHAVIORS` ampliada** con `climbing`, `climb`, `wandering/wander away`, `bolting`, `bolt from`, `running/runs/run away`, `elope` — la misma familia que `RE_PELIGRO_TERM` del generador de notas: elopement con otro nombre, y trepar.
+- **v2.2 — `scanReplacementAsIntervention` / `REPLACEMENT_LISTED_AS_INTERVENTION`** (blocker, categoría `replacement_as_intervention`). Salió de un assessment real de un cliente de 16 años: bajo «Proposed interventions» el documento imprime los **programas** de reemplazo junto a los procedimientos que reducen la conducta, y su tabla se desliza en un salto de página. Ningún control lo veía, porque «función ↔ reemplazo ↔ intervención» juzga el **par**, no que un programa esté en la lista equivocada. Dos vías: **estructura** (un elemento de `interventions` que ES el nombre de un reemplazo del documento, igual o a distancia de edición ≤15 %) y **texto** (una línea corta en MAYÚSCULAS bajo un encabezado de intervenciones, hasta que un encabezado `Replacement…`/`Acquisition…` cambia el contexto o pasan 80 líneas). **Una sola tarjeta** con todos los programas. Necesita el canónico, así que sin API no corre.
+- Seis retoques en los prompts de IA (extracción fiel, coherencia, conceptual, crítica, chat, rediseño) para que la IA no tome el programa por una intervención ni lo reporte dos veces, y para que sepa que las tablas se desalinean en los saltos de página.
+- `CRITIC_NEVER_AUTODISMISS` ampliado con la regla nueva, y `replacement_as_intervention` añadido a `REPORT_CAT_LABELS`, a las recomendaciones y al mapa de sugerencias — la lección del §1.12 aplicada de entrada.
+
+**Y arregla una corrupción que llevaba en el archivo desde el primer commit.**
+
+El archivo tenía **diez caracteres de retroceso literales (U+0008)** donde el código quería `\b`. Los patrones afectados exigían un carácter invisible pegado al texto, que ningún documento contiene, así que **cuatro reglas estaban muertas sin que nada lo delatara**:
+
+| Regla | Patrón corrupto |
+|---|---|
+| `DRL_DANGEROUS` | `/<BS>drl<BS>\|<BS>differential reinforcement of low<BS>/gi` |
+| `PLANNED_IGNORING_AGGRESSION` | `/<BS>planned ignoring<BS>/gi` |
+| `RESPONSE_BLOCKING_DURATION` | `/<BS>(response blocking\|…)<BS>/gi` |
+| `CAREGIVER_DATA_COLLECTION` (sub-patrón de preference assessment/FA) | `…\|fa<BS>)/gi` |
+
+Venían en **`3f5a205` «Add files via upload»**, el primer commit del repositorio: no las introdujo ninguna sesión de trabajo. Se encontraron comparando los codepoints del código vivo de las dos versiones, después de que una prueba en Node contradijera a la función real de la página — el `toString()` no las delata porque el retroceso es invisible al imprimirlo.
+
+**Lección para el método:** un `node --check` limpio, 22 harnesses en verde y cero mojibake **no detectan esto**. La regla compila, corre y devuelve vacío. Lo único que lo habría cazado antes es un caso que afirme que la regla SÍ dispara cuando debe, y no había ninguno para estas cuatro. Conviene no escribir `\b` (ni `\s`, `\d`, `\w`) dentro de una cadena de Python sin duplicar la barra al editar este archivo, y comprobar `s.count(chr(8))` después de cada edición.
+
+**Efecto medido sobre los tres documentos reales** (eran 18 / 16 / 18):
+
+| Documento | ahora | lo que entra |
+|---|---|---|
+| Jade | 11 blockers · 12 · 3 = **26** | `PLANNED_IGNORING_AGGRESSION` ×1, `RESPONSE_BLOCKING_DURATION` ×7 |
+| Abrahan | 17 blockers · 9 · 2 = **28** | `RESPONSE_BLOCKING_DURATION` ×12 |
+| Safira | 4 blockers · 15 · 2 = **21** | `RESPONSE_BLOCKING_DURATION` ×3 |
+
+Ningún hallazgo anterior se perdió: las diferencias son solo altas.
+
+**Dos cosas que quedan abiertas, de las reglas resucitadas** (son clínicas, así que las decide Rolando):
+
+1. **`RESPONSE_BLOCKING_DURATION` no agrega.** Doce tarjetas idénticas en Abrahan. Es exactamente lo que el comentario de la regla v2.2 dice que hace que se deje de leer el panel, pero `CLINICAL_SAFETY_RULES` nunca recibió el tratamiento de agregación del §1.10.
+2. **Falsos positivos en Safira.** Las tres apariciones son `blocking` a secas describiendo la conducta **del cliente** —*«may require physical blocking of behavior»*, *«without physical blocking or maladaptive behavior»*—, no el procedimiento. El `\b` no ayuda porque ahí `blocking` es una palabra entera. En Jade, además, el documento **sí** dice `(15 sec)` dos veces, pero la primera mención queda a más de 200/300 caracteres de cualquier duración y por eso dispara: discutible, porque la norma pide que la duración acompañe al procedimiento.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.
@@ -575,6 +619,7 @@ Tres exigencias implementadas sobre la herramienta misma:
 | Auto-descarte de la crítica minó confianza | Crítica cambiaba status | Crítica solo anota |
 | "TBD" marcado como blocker en cada aparición | Regex de placeholder sin contexto | `classifyTbdContext`: fechas de servicio exentas; campos de meta de §6.2.2 siguen siendo blocker con cita |
 | Edad "no se pudo determinar" con la edad escrita en el documento | `resolveAgeYears` solo leía prosa; el campo etiquetado del encabezado no lo leía nadie | `ageFromLabeledField` §1.13: la etiqueta legitima el valor, y el número tiene que abrirlo |
+| Cuatro reglas de seguridad muertas en silencio desde el primer commit | Diez caracteres de retroceso literales (U+0008) donde el código quería `\b`: el patrón exige un carácter que ningún documento tiene | Corregido en la versión del 11 oct 2026 (§1.15). Comprobar `s.count(chr(8))` tras cada edición; `node --check` y los harnesses NO lo detectan |
 
 ---
 
