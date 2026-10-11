@@ -321,7 +321,7 @@ El modificador HN en 97155 y 97156 designa al BCaBA como proveedor; sin HN, al B
 **Severidad:** blocker  
 **Reglas que lo aplican:** `DRL_DANGEROUS`, `PROH_PLANNED_IGNORING_AGGRESSION`, `RESPONSE_BLOCKING_DURATION`, (terminos e intervenciones prohibidas)
 
-Planned ignoring nunca para agresion, SIB, elopement o destruccion; response blocking con limite de 10-15 s; DRL nunca para conductas peligrosas; RIRD para automatico/sensorial; los cuidadores no recolectan datos; un reemplazo es valido solo si es funcionalmente equivalente.
+Planned ignoring ni ninguna retirada de atencion nunca para agresion, SIB, elopement, destruccion, rabietas o trepar; response blocking con limite de 10-15 s; DRL nunca para conductas peligrosas; RIRD para automatico/sensorial; los cuidadores no recolectan datos; un reemplazo es valido solo si es funcionalmente equivalente.
 
 > ⚠️ Reglas clinicas de Rolando. No derivadas de una lectura automatizada de las fuentes; no citar seccion.
 

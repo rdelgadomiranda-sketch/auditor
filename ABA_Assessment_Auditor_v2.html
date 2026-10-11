@@ -705,7 +705,7 @@ const PROHIBITED_INTERVENTIONS=[
   {id:'PROH_ART_THERAPY',severity:'blocker',variants:{en:['art therapy'],es:['arteterapia','terapia de arte']},rationale:'No es una intervención ABA.'},
   {id:'PROH_MINDFUL_MOMENT',severity:'blocker',variants:{en:['mindful moment','mindfulness moment','teaching mindful'],es:['momento de atención plena']},rationale:'No es una intervención ABA autorizada.'},
   {id:'PROH_RESPONSE_COST_ALONE',severity:'warning',variants:{en:['response cost as standalone'],es:['costo de respuesta como intervención aislada']},rationale:'El costo de respuesta sin emparejamiento con DRA no está autorizado.'},
-  {id:'PROH_PLANNED_IGNORING_AGGRESSION',severity:'blocker',variants:{en:['planned ignoring'],es:['ignorar planeado','ignorancia planeada']},rationale:'El planned ignoring nunca debe usarse para agresión física, SIB o conductas que representen un riesgo de seguridad.'},
+  {id:'PROH_PLANNED_IGNORING_AGGRESSION',severity:'blocker',variants:{en:['planned ignoring'],es:['ignorar planeado','ignorancia planeada']},rationale:'El planned ignoring, como cualquier retirada de atención, nunca debe usarse para agresión física, SIB, elopement, destrucción de propiedad, rabietas, trepar o conductas que representen un riesgo de seguridad.'},
   {id:'PROH_EXERCISE_ALONE',severity:'warning',variants:{en:['schedule exercise','background exercise','exercise as intervention'],es:['ejercicio como intervención','ejercicio programado']},rationale:'El ejercicio como intervención conductual aislada no está autorizado.'},
   {id:'PROH_SIMPLE_CORRECTION',severity:'blocker',variants:{en:['simple correction as primary'],es:['corrección simple como primaria']},rationale:'La corrección simple sin reforzamiento diferencial no es una intervención primaria autorizada.'},
   {id:'PROH_COUNTING',severity:'warning',variants:{en:['calm count','counting to calm','count to ten'],es:['contar para calmarse','contar hasta diez']},rationale:'Calmar mediante conteo no es una intervención ABA autorizada.'}
@@ -908,7 +908,9 @@ const DANGEROUS_BEHAVIORS = [
   'physical aggression','aggression','hitting','kicking','biting','scratching','pushing',
   'self-injurious','self-injury','sib','head banging','head-banging','self-hitting',
   'elopement','property destruction','tantrum','severe tantrum','meltdown',
-  'self-mutilation','throwing objects','destruction'
+  'self-mutilation','throwing objects','destruction',
+  /* misma familia que RE_PELIGRO_TERM del generador de notas: elopement con otro nombre, y trepar */
+  'climbing','climb','wandering away','wander away','bolting','bolt from','running away','runs away','run away','elope'
 ];
 
 const CLINICAL_SAFETY_RULES = [
@@ -917,7 +919,7 @@ const CLINICAL_SAFETY_RULES = [
     test: function(text){
       const lower=text.toLowerCase();
       const findings=[];
-      const drlPattern=/drl|differential reinforcement of low/gi;
+      const drlPattern=/\bdrl\b|\bdifferential reinforcement of low\b/gi;
       const drlMatches=[...text.matchAll(drlPattern)];
       for(const m of drlMatches){
         const ctx=text.slice(Math.max(0,m.index-200),m.index+200).toLowerCase();
@@ -925,9 +927,9 @@ const CLINICAL_SAFETY_RULES = [
         if(nearDangerous){
           findings.push({
             ruleId:'DRL_DANGEROUS',severity:'blocker',category:'clinical_safety',
-            description:'DRL (Differential Reinforcement of Low Rates) appears to be applied to a dangerous or severely disruptive behavior. DRL is contraindicated for physical aggression, SIB, elopement, property destruction, or severe tantrums. These behaviors require immediate elimination, not rate reduction. Use DRA, DRI, DRO, FCT, or Extinction per function instead.',
+            description:'DRL (Differential Reinforcement of Low Rates) appears to be applied to a dangerous or severely disruptive behavior. DRL is contraindicated for physical aggression, SIB, elopement, property destruction, or severe tantrums. These behaviors require immediate elimination, not rate reduction. Use DRA, DRI, DRO, FCT, or extinction of escape / access to a tangible (never attention extinction) instead.',
             matchedText:m[0],context:extractContext(text,m.index,m[0].length),position:m.index,
-            suggestedAction:'Replace DRL with DRA, DRI, DRO, FCT, or Extinction per function. DRL is only appropriate for non-dangerous behaviors occurring at excessive frequency.',
+            suggestedAction:'Replace DRL with DRA, DRI, DRO, FCT, or extinction of escape / access to a tangible (never attention extinction). DRL is only appropriate for non-dangerous behaviors occurring at excessive frequency.',
             suggestedRewrite:'',status:'open',createdAt:Date.now()
           });
         }
@@ -937,23 +939,41 @@ const CLINICAL_SAFETY_RULES = [
   },
   {
     id:'PLANNED_IGNORING_AGGRESSION',severity:'blocker',category:'clinical_safety',
+    /* v2.1 (9 oct 2026): la regla era SOLO «planned ignoring». Decision del analista, 7 y 8 de octubre:
+       las conductas peligrosas son contrarias a CUALQUIER retirada de atencion, con cualquier nombre y sin
+       excepciones, y «EXT» en estas listas es extincion de ESCAPE o de ACCESO a un tangible, nunca de atencion.
+       Lo que un assessment prescribe con otras palabras («withhold or minimize attention … by looking away»)
+       no se reconocia como lo vetado. */
     test: function(text){
       const findings=[];
-      const piPattern=/planned ignoring/gi;
-      const piMatches=[...text.matchAll(piPattern)];
-      for(const m of piMatches){
+      const strict=/planned ignoring|attention extinction|extinction of (?:the )?attention|(?:withhold(?:ing|s)?|withheld|minimi[sz](?:e|es|ed|ing)|withdraw(?:ing|s|n)?|remov(?:e|es|ed|ing))\s+(?:the\s+)?(?:social\s+)?attention|ignor(?:e|es|ed|ing)\s+(?:the\s+|any\s+)?(?:behavio[u]?r|aggress\w*|tantrum\w*|episode|outburst)|minimi[sz](?:e|es|ed|ing)\s+social\s+interaction/gi;
+      const loose=/looking away|turn(?:ing|s)? away|no eye contact|without eye contact|leav(?:e|es|ing) the room/gi;
+      const hits=[];
+      for(const m of text.matchAll(strict))hits.push(m);
+      for(const m of text.matchAll(loose)){
+        // «looking away» a secas es una conducta del cliente: solo cuenta si habla de atencion/ignorar.
+        const near=text.slice(Math.max(0,m.index-120),m.index+120).toLowerCase();
+        if(/attention|ignor|withh|minimi[sz]|extinction/.test(near))hits.push(m);
+      }
+      const seen=[];
+      for(const m of hits){
+        if(seen.some(i=>Math.abs(i-m.index)<40))continue;   // una retirada, un hallazgo
+        const antes=text.slice(Math.max(0,m.index-60),m.index).toLowerCase();
+        if(/\b(?:never|not|no|avoid|avoids|avoided|without|contraindicated|do not|does not|must not|should not)\s+(?:\w+\s+){0,3}$/.test(antes))continue;   // negada
+        const despues=text.slice(m.index+m[0].length,m.index+m[0].length+60).toLowerCase();
+        if(/^[\s,]*(?:\w+\s+){0,2}(?:never|not)\b/.test(despues))continue;   // negada por detrás: «attention extinction is never used…»
         const ctx=text.slice(Math.max(0,m.index-300),m.index+300).toLowerCase();
-        const nearAggression=DANGEROUS_BEHAVIORS.some(b=>ctx.includes(b));
-        if(nearAggression){
-          findings.push({
-            ruleId:'PLANNED_IGNORING_AGGRESSION',severity:'blocker',category:'clinical_safety',
-            description:'Planned ignoring appears in proximity to a physically dangerous behavior (aggression, SIB, or similar). Planned ignoring is NEVER appropriate for behaviors that pose a safety risk to the client or others. Use extinction per function paired with DRA or FCT, and ensure safety procedures (protective response blocking) are specified.',
-            matchedText:m[0],context:extractContext(text,m.index,m[0].length),position:m.index,
-            suggestedAction:'Remove planned ignoring from procedures for this behavior. Replace with extinction per function + DRA/FCT. Add protective response blocking if there is risk of injury.',
-            suggestedRewrite:'Extinction per function: withhold the maintaining reinforcer contingent on the behavior while immediately reinforcing the replacement communicative response (FCT). Protective response blocking will be applied for 10–15 seconds to prevent injury when the behavior occurs.',
-            status:'open',createdAt:Date.now()
-          });
-        }
+        const nearDangerous=DANGEROUS_BEHAVIORS.some(b=>ctx.includes(b));
+        if(!nearDangerous)continue;
+        seen.push(m.index);
+        findings.push({
+          ruleId:'PLANNED_IGNORING_AGGRESSION',severity:'blocker',category:'clinical_safety',
+          description:'Se prescribe retirar o minimizar la atención ("'+m[0]+'") junto a una conducta peligrosa (agresión, SIB, elopement, destrucción de propiedad, rabietas o trepar). Ninguna retirada de atención es apropiada para una conducta que representa un riesgo de seguridad, con cualquier nombre (planned ignoring, attention extinction, ignorar la conducta, mirar a otro lado, minimizar la interacción). La extinción, cuando procede, es de ESCAPE o de ACCESO a un tangible, nunca de atención.',
+          matchedText:m[0],context:extractContext(text,m.index,m[0].length),position:m.index,
+          suggestedAction:'Remove the attention withdrawal from the procedures for this behavior. Keep the safety procedure, and teach and reinforce the replacement response (FCT/DRA) with the consequence that matches the behavior’s function. Extinction, when indicated, applies only to escape or to access to a tangible, never to attention.',
+          suggestedRewrite:'No attention withdrawal is used for this behavior. Safety procedures take priority; the replacement response is prompted and reinforced (FCT/DRA) with the consequence that matches the function. Extinction, where indicated, applies only to escape or to access to a tangible.',
+          status:'open',createdAt:Date.now()
+        });
       }
       return findings;
     }
@@ -962,11 +982,11 @@ const CLINICAL_SAFETY_RULES = [
     id:'RESPONSE_BLOCKING_DURATION',severity:'blocker',category:'clinical_safety',
     test: function(text){
       const findings=[];
-      const rbPattern=/(response blocking|protective response blocking|blocking)/gi;
+      const rbPattern=/\b(response blocking|protective response blocking|blocking)\b/gi;
       const rbMatches=[...text.matchAll(rbPattern)];
       for(const m of rbMatches){
         const ctx=text.slice(Math.max(0,m.index-200),m.index+300).toLowerCase();
-        const hasDuration=/(10|15|ten|fifteen)\s*(to|–|-|and)?\s*(15|twenty|seconds?|sec)/.test(ctx)||/10[\s-–]15\s*sec/.test(ctx);
+        const hasDuration=/(10|15|ten|fifteen)\s*(to|–|-|and)?\s*(15|twenty|seconds?|sec\b)/.test(ctx)||/10[\s-–]15\s*sec/.test(ctx);
         if(!hasDuration){
           findings.push({
             ruleId:'RESPONSE_BLOCKING_DURATION',severity:'blocker',category:'clinical_safety',
@@ -1215,7 +1235,7 @@ const CLINICAL_SAFETY_RULES = [
         {pattern:/caregiver\s+will\s+(implement|run|conduct|administer|deliver)\s+(discrete trial|dtt|net|natural environment)/gi, label:'discrete trial/NET implementation'},
         {pattern:/caregiver\s+will\s+(collect|record|take|document)\s+data/gi, label:'data collection'},
         {pattern:/parent\s+will\s+(collect|record|take|document)\s+data/gi, label:'parent data collection'},
-        {pattern:/caregiver\s+will\s+(conduct|run|administer)\s+(preference\s+assessment|functional\s+analysis|fa)/gi, label:'preference assessment/FA'},
+        {pattern:/caregiver\s+will\s+(conduct|run|administer)\s+(preference\s+assessment|functional\s+analysis|fa\b)/gi, label:'preference assessment/FA'},
         {pattern:/caregiver\s+will\s+(write|draft|complete|submit)\s+(session\s+note|progress\s+note|billing)/gi, label:'session note writing'},
       ];
       for(const rule of unauthorizedCgGoals){
@@ -1937,6 +1957,10 @@ async function runAudit(){
       // CASP: coherencia alcance-intensidad, con horas DIRECTAS (no el total
       // de R9, que es la metrica del pagador).
       findings=findings.concat(scanScopeIntensityCoherence(text,state.currentDoc.docType,state.currentDoc.canonical));
+
+      // v2.2: un programa de reemplazo listado como intervencion. Usa el canonico
+      // (los nombres de los reemplazos salen de la extraccion), por eso corre aqui.
+      findings=findings.concat(scanReplacementAsIntervention(text,state.currentDoc.canonical));
 
       const docSizeKB=Math.round(state.currentDoc.text.length/1024);
       setProg(82,`Running deep clinical & regulatory audit on full document (${docSizeKB} KB)... this can take 20-60 seconds`);
@@ -2869,6 +2893,107 @@ function scanProhibitedInterventions(text){
   return findings;
 }
 
+/* ============================================================
+   v2.2 (11 oct 2026) — UN PROGRAMA DE REEMPLAZO NO ES UNA INTERVENCION
+
+   Salio de un assessment real (cliente de 16 años): bajo «Proposed interventions» el documento imprime los
+   PROGRAMAS de reemplazo (REQUEST FOR BREAK, ACCEPTING "NO", LEARN TO WAIT, SAFETY SKILLS TRAINING…) junto a los
+   procedimientos que reducen la conducta, y su tabla (interventions | replacement) se desliza en un salto de
+   pagina, de modo que un programa acaba en la lista de intervenciones de una conducta. Ningun control lo veia:
+   «function ↔ replacement ↔ intervention» juzga el PAR, no que un programa este en la lista equivocada, y la IA de
+   coherencia llegaba a tomar el programa por una intervencion y a juzgar si era congruente con la funcion.
+
+   Es un error del DOCUMENTO: lo corrige su autora (este programa audita, no corrige). Una sola tarjeta con todos
+   los programas, no una por programa: 19 tarjetas iguales es lo que hace que se deje de leer el panel.
+
+   Dos vias, y hace falta el canonico (los nombres de los reemplazos salen de la extraccion estructurada):
+    (a) ESTRUCTURA: un elemento de «interventions» de una conducta que ES el nombre de un reemplazo del documento
+        (igual, o a una distancia de edicion pequeña si el nombre tiene varias palabras). «FCT teaching a break
+        mand» no es el nombre de ningun programa y no cuenta: solo el elemento ENTERO.
+    (b) TEXTO: una linea corta que es el nombre de un programa, bajo un encabezado de intervenciones, hasta que un
+        encabezado «Replacement…/Acquisition…» cambia el contexto (o pasan 80 lineas sin un programa nuevo). Tiene que estar en MAYUSCULAS
+        o ser el nombre exacto: una frase con el nombre dentro no es una lista. */
+function _rpNorm(s){
+  return String(s==null?'':s).toLowerCase().replace(/[“”‘’"'`´]/g,'')
+    .replace(/[^a-z0-9áéíóúñü]+/g,' ').trim()
+    .split(' ').map(w=>(w.length>=4&&/s$/.test(w))?w.slice(0,-1):w).join(' ');
+}
+function _rpDist(a,b){
+  if(a===b)return 0;
+  const m=a.length,n=b.length;if(!m)return n;if(!n)return m;
+  let prev=new Array(n+1),cur=new Array(n+1);
+  for(let j=0;j<=n;j++)prev[j]=j;
+  for(let i=1;i<=m;i++){
+    cur[0]=i;
+    for(let j=1;j<=n;j++)cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));
+    const t=prev;prev=cur;cur=t;
+  }
+  return prev[n];
+}
+function _rpEsPrograma(item,nombres){
+  const x=_rpNorm(String(item==null?'':item).replace(/^\s*(?:[-•*]|\d+[.)])\s*/,'').replace(/[:.;,]\s*$/,''));
+  if(!x)return false;
+  for(const r of nombres){
+    if(x===r)return true;
+    if(x.indexOf(' ')!==-1&&r.indexOf(' ')!==-1&&Math.min(x.length,r.length)>=10
+       &&_rpDist(x,r)<=Math.floor(Math.max(x.length,r.length)*0.15))return true;
+  }
+  return false;
+}
+function scanReplacementAsIntervention(text,canonical){
+  const t=String(text==null?'':text);
+  if(!t.trim()||!canonical||!Array.isArray(canonical.behaviors))return[];
+  const nombres=[];
+  canonical.behaviors.forEach(b=>(b&&Array.isArray(b.replacements)?b.replacements:[]).forEach(r=>{
+    const n=r&&r.name&&r.name!=='(sin nombre)'?_rpNorm(r.name):'';
+    if(n.length>=4&&nombres.indexOf(n)===-1)nombres.push(n);
+  }));
+  if(!nombres.length)return[];
+  const hits=[],vistos={};
+  const poner=(nombre,donde,pos)=>{
+    const k=_rpNorm(nombre);
+    if(!k||vistos[k]){ if(k&&vistos[k]&&pos!=null&&vistos[k].pos==null)vistos[k].pos=pos; return; }
+    vistos[k]={nombre:String(nombre).replace(/\s+/g,' ').trim(),donde,pos:pos==null?null:pos};
+    hits.push(vistos[k]);
+  };
+  // (a) estructura
+  canonical.behaviors.forEach(b=>(b&&Array.isArray(b.interventions)?b.interventions:[]).forEach(it=>{
+    if(typeof it==='string'&&_rpEsPrograma(it,nombres))poner(it,'estructura',null);
+  }));
+  // (b) texto
+  let ctx='',desde=0,off=0;
+  t.split('\n').forEach((ln,i)=>{
+    const ini=off;off+=ln.length+1;
+    const l=ln.replace(/\s+/g,' ').trim();
+    if(!l)return;
+    if(l.length<=70&&(/^(?:proposed\s+|recommended\s+)?interventions?\b/i.test(l)||/\binterventions?\s*\/\s*pro/i.test(l))){ctx='int';desde=i;return;}
+    if(l.length<=70&&/^(?:replacement|acquisition|skill\s+acquisition)\b/i.test(l)){ctx='rep';return;}
+    if(ctx!=='int'||i-desde>80||l.length>90)return;
+    const c=l.replace(/^(?:[-•*]|\d+[.)])\s*/,'').replace(/[:.;,]\s*$/,'');
+    if(c.length<8)return;
+    const caps=/[A-Z]/.test(c)&&!/[a-z]/.test(c);
+    if((caps||nombres.indexOf(_rpNorm(c))!==-1)&&_rpEsPrograma(c,nombres)){poner(c,'texto',ini+Math.max(0,ln.indexOf(l.slice(0,12))));desde=i;}
+  });
+  if(!hits.length)return[];
+  const lista=hits.map(h=>'"'+h.nombre+'"').join(', ');
+  const primero=hits.find(h=>h.pos!=null)||hits[0];
+  const pos=primero.pos!=null?primero.pos:Math.max(0,t.toLowerCase().indexOf(primero.nombre.toLowerCase()));
+  return[{
+    id:uid(),
+    ruleId:'REPLACEMENT_LISTED_AS_INTERVENTION',
+    severity:'blocker',
+    category:'replacement_as_intervention',
+    description:`${hits.length} programa${hits.length===1?'':'s'} de reemplazo/adquisición del propio documento aparece${hits.length===1?'':'n'} también como intervención (bajo «Proposed interventions» o en la lista de intervenciones de una conducta): ${hits.slice(0,12).map(h=>'«'+h.nombre+'»').join(' · ')}${hits.length>12?' · y '+(hits.length-12)+' más':''}. Un programa de reemplazo se ENSEÑA; no es un procedimiento que se aplique para reducir la conducta. Si el documento lo lista como intervención, cualquier plan o nota que lo siga lo presentará como tal. Nota: las tablas del documento pueden deslizar la columna de reemplazos junto a la de intervenciones al cambiar de página; compruebe en el original si el programa pertenece a la columna de reemplazos.`,
+    matchedText:primero.nombre,
+    context:extractContext(t,pos,primero.nombre.length),
+    position:pos,
+    occurrences:hits.length,
+    suggestedAction:`The following replacement / acquisition programs are listed as interventions (under "Proposed interventions" or in the intervention list of a behavior), but they are replacement behaviors that the plan teaches, not procedures applied to reduce a behavior: ${lista}. Please keep them only in the replacement/acquisition section and list, as interventions, only the procedures that reduce each maladaptive behavior.`,
+    status:'open',
+    createdAt:Date.now()
+  }];
+}
+
 function scanPlaceholders(text){
   const findings=[];
   const tbdValid=[]; // TBD/TBA de fecha de servicio: convención válida
@@ -3323,7 +3448,7 @@ const AUDIT_REQUIREMENTS=[
    reglas:['SUPERVISION_10PCT'],
    nota:'Pendiente de verificar contra el texto vigente del BACB antes de citar una seccion.'},
   {id:'ABA_PROHIBITED_PROCEDURES', fuente:'Dominio clinico codificado a mano (BACB, CASP)', edicion:'-', seccion:'-', verificacion:'convencion', severidad:'blocker',
-   requisito:'Planned ignoring nunca para agresion, SIB, elopement o destruccion; response blocking con limite de 10-15 s; DRL nunca para conductas peligrosas; RIRD para automatico/sensorial; los cuidadores no recolectan datos; un reemplazo es valido solo si es funcionalmente equivalente.',
+   requisito:'Planned ignoring ni ninguna retirada de atencion nunca para agresion, SIB, elopement, destruccion, rabietas o trepar; response blocking con limite de 10-15 s; DRL nunca para conductas peligrosas; RIRD para automatico/sensorial; los cuidadores no recolectan datos; un reemplazo es valido solo si es funcionalmente equivalente.',
    reglas:['DRL_DANGEROUS','PROH_PLANNED_IGNORING_AGGRESSION','RESPONSE_BLOCKING_DURATION','(terminos e intervenciones prohibidas)'],
    nota:'Reglas clinicas de Rolando. No derivadas de una lectura automatizada de las fuentes; no citar seccion.'}
 ];
@@ -3408,7 +3533,12 @@ function verifiedSourcesForPrompt(){
 
    AUDITOR_RULES_VERSION se incrementa cada vez que cambia una regla clinica o
    regulatoria, para que un hallazgo archivado siga siendo rastreable. */
-const AUDITOR_RULES_VERSION='2026.09.17-1';
+/* 2026.10.11-1 (v2.2): REPLACEMENT_LISTED_AS_INTERVENTION. Un programa de reemplazo/adquisicion que el propio
+   documento imprime tambien como intervencion (bajo «Proposed interventions» o en la lista de una conducta) se
+   marca en UNA tarjeta blocker, con el texto en ingles para la autora. Tres lineas en los prompts de IA (extraccion
+   fiel, coherencia, conceptual) para que la IA no tome el programa por una intervencion. Sin la extraccion
+   estructurada (sin API) no corre. Ver scanReplacementAsIntervention. */
+const AUDITOR_RULES_VERSION='2026.10.11-1';
 
 // Desglose del alcance de la IA sobre los hallazgos de una auditoria: cuales
 // vienen de reglas deterministas (regex, sin IA) y cuales de una pasada de IA.
@@ -6117,7 +6247,7 @@ Output format — strict JSON only, no preamble, no markdown:
 // ============================================================================
 // Safety-critical categories/rules are never auto-dismissed even if the critic
 // thinks they are false positives — a human must always see them.
-const CRITIC_NEVER_AUTODISMISS=/safety|crisis|planned_ignoring|dangerous|self_injur|aggression|elopement|response_block|DRL/i;
+const CRITIC_NEVER_AUTODISMISS=/safety|crisis|planned_ignoring|dangerous|self_injur|aggression|elopement|response_block|DRL|replacement_as_intervention|REPLACEMENT_LISTED_AS_INTERVENTION/i;
 
 async function runCriticPass(findings, fullText){
   if(!findings || findings.length===0) return {};
@@ -6402,6 +6532,8 @@ async function runConceptualAudit(text){
 
 This document is for a SINGLE client in the state of Florida under ${PAYER.nombre} / Florida Medicaid managed care ABA coverage (CPT codes 97151, 97153, 97155, 97156). All Florida Medicaid § 59G-1.010 standards apply.
 
+A replacement/acquisition program listed as an intervention is reported by a separate check: do not report it again, and do not treat such a program as a prescribed intervention when judging the safety or the congruence of the plan.
+
 FLORIDA MEDICAID & ${PAYER.nombre} SPECIFIC CHECKS (mark as BLOCKER):
 A. Medical necessity documentation [Florida Medicaid Coverage Policy, December 2024, Section 59G-4.125]: must explicitly address all five elements required for Medicaid authorization: (1) functional impairment in daily activities, (2) safety risk to self or others, (3) escalation trajectory without treatment, (4) ABA as the evidence-based approach, (5) least-restrictive setting justification. Flag any missing element as a blocker — absence of any element is grounds for authorization denial.
 
@@ -6462,7 +6594,7 @@ VALID MEASUREMENT CONVENTIONS — DO NOT FLAG (these are standard practice in th
 4. Intervention-function incompatibility: intervention procedures that do not match the hypothesized function of the behavior (e.g., NCR attention for escape-maintained behavior without pairing extinction; DRO for SIB without safety procedures).
 5. STO trajectory validity: STO series for dangerous behaviors that use percentage reduction instead of fixed decrements, or STO sequences that cannot mathematically reach zero or near-zero. PROGRESSIVE SEQUENCES (cascade): STO targets usually build on each other — each STO's starting value equals the previous STO's ending value. If one STO's value is wrong, impossible (e.g., a reduction goal whose target is HIGHER than its starting value), or breaks the monotonic progression, flag that STO AND note that the SUBSEQUENT STOs in the chain likely need to shift accordingly — but DO NOT compute or invent the corrected numbers; state explicitly that the analyst must re-derive the progression from the corrected value (inventing numbers is a Medicaid fraud risk). EXACT ANCHORING: when a finding is about a specific STO or LTO, the "quote" MUST include that objective's label/number and its distinguishing value (e.g., "STO#5: ... 60% of opportunities ...") so the correction targets that exact objective and never a near-identical neighboring STO.
 6. DRL contraindication: DRL applied to any behavior that requires immediate elimination (aggression, SIB, elopement, property destruction, tantrums).
-7. Planned ignoring contraindication: planned ignoring as a consequence procedure for physical aggression, SIB, or any behavior posing safety risk.
+7. Attention-withdrawal contraindication: planned ignoring OR any attention withdrawal (attention extinction, withholding or minimizing attention, ignoring the behavior, looking away, no eye contact or conversation, leaving the room) as a consequence for physical aggression, SIB, elopement, property destruction, tantrums, climbing or any behavior posing safety risk — under any name. Extinction, where indicated, is of escape or of access to a tangible, never of attention.
 8. Response blocking without duration constraint: response blocking not accompanied by an explicit 10–15-second time limit.
 9. Missing crisis plan for high-risk presentations: if physical aggression, SIB, elopement, property destruction, or suicidality are documented, a crisis plan must be present with emergency contacts.
 10. Non-observable/non-measurable language: goals, objectives, or descriptions that cannot be directly observed or measured (e.g., "will improve behavior," "will feel better," "will understand").
@@ -6657,6 +6789,7 @@ EXTRACTION RULES:
 - Extract behaviors and their PAIRED replacements exactly as the document associates them. If the document lists replacements separately from behaviors, associate them only where the link is explicit; if unclear, put the replacement under the behavior it most directly references and set functionTargeted to "unclear".
 - "function" is the function of the MALADAPTIVE behavior. "functionTargeted" is the function the REPLACEMENT serves (judge it from the replacement's description — e.g., "request a break" serves escape; "raise hand for attention" serves attention; "request the item" serves tangible). Do not assume they match — report what each actually is.
 - ALWAYS fill "functionReason" (SPANISH, brief). Frame it in terms of functional EQUIVALENCE — whether the replacement ACCESSES/RECRUITS (never "produces") the same reinforcer/consequence that maintains the behavior — and, when it applies, LEAD with the acquisition-vs-replacement distinction. When functionTargeted is "unclear", state CONCRETELY why the function cannot be determined. Examples: "es una meta de adquisición de habilidades, no un reemplazo funcionalmente equivalente a esta conducta"; "no está emparejado con la función de la conducta (no accede al mismo reforzador que la mantiene)"; "podría alinearse con varias funciones; el plan no especifica cuál"; "sin definición operacional, no se puede determinar la función que persigue". Never write that a replacement "produces" a reinforcer, and never leave the reason empty for an unclear item.
+- "interventions" lists the procedures the document names for this behavior, AS WRITTEN. If the document prints a replacement/acquisition program (a skill the plan teaches, with its own name and teaching steps) under that intervention list, copy it exactly as written: do not move it to replacements and do not drop it. A separate check reports that error.
 - Keep all clinical text in its original language (do not translate). Keep acronyms as-is.
 - Output strict JSON only — no preamble, no markdown fences, no commentary.
 
@@ -6789,6 +6922,10 @@ For EACH target/maladaptive behavior in the document, identify these three eleme
 
 CORE PRINCIPLE: a replacement behavior is valid ONLY if it is FUNCTIONALLY EQUIVALENT to the behavior it replaces — it must let the client obtain the SAME reinforcer (the same function) through an appropriate response. If the replacement targets a different reinforcer than the behavior's function, it will NOT compete with the problem behavior, and the plan is clinically incoherent. Likewise, the interventions must be congruent with the function.
 
+REPLACEMENT PROGRAMS ARE NOT INTERVENTIONS: a replacement/acquisition program (a skill the plan teaches, with its own name and teaching steps, e.g. a program printed under "Proposed interventions") is NOT an intervention. If an item in a behavior's interventions list is really such a program, do not judge it as an intervention, do not count it as evidence that the behavior has a congruent intervention, and never propose it as the fix for an incongruent pair. A separate check already reports that the document lists it there; do not report it again here.
+
+TABLES SPLIT ACROSS PAGES: the document's tables may slide the replacement column next to the intervention column when a page breaks. If a function/replacement/intervention pair looks misaligned only because of such a break, say so in the finding instead of declaring the plan incoherent, and mark your confidence accordingly.
+
 REFERENCE TABLE — function → functionally-equivalent replacement → congruent interventions:
 
 • ESCAPE / AVOIDANCE (behavior maintained by escape from or avoidance of demands/tasks/situations):
@@ -6798,8 +6935,8 @@ REFERENCE TABLE — function → functionally-equivalent replacement → congrue
 
 • ATTENTION / SOCIAL (behavior maintained by adult or peer attention):
   - Equivalent replacement: appropriate ways to recruit attention — functional communication to request attention ("excuse me", raising a hand, tapping a shoulder, requesting to play/interact).
-  - Congruent interventions: FCT teaching an attention mand, DRA delivering attention for the appropriate response, noncontingent attention (fixed-time attention), and extinction of the attention-maintained behavior (planned ignoring ONLY when the behavior poses no safety risk — never for aggression/SIB/elopement/property destruction).
-  - INCOHERENT for attention: a replacement that requests a break (escape) or a tangible; reinforcing the replacement with escape from a task instead of attention.
+  - Congruent interventions: FCT teaching an attention mand, DRA delivering attention for the appropriate response, noncontingent attention (fixed-time attention), and extinction of the attention-maintained behavior ONLY when the behavior poses no safety risk. For aggression, SIB, elopement, property destruction, tantrums or climbing NEVER withdraw or minimize attention under any name (planned ignoring, attention extinction, ignoring the behavior, looking away, no eye contact or conversation, leaving the room): use FCT/DRA with the function-matched consequence plus the safety procedure. In this analysis 'EXT' means extinction of ESCAPE or of ACCESS to a tangible, never of attention.
+  - INCOHERENT for attention: a replacement that requests a break (escape) or a tangible; reinforcing the replacement with escape from a task instead of attention; ANY attention withdrawal prescribed for a dangerous behavior (mark BLOCKER).
 
 • TANGIBLE / ACCESS (behavior maintained by access to items or activities):
   - Equivalent replacement: appropriate ways to obtain the item/activity — functional communication to request the specific item/activity (vocal mand, PECS/exchange, AAC), and tolerance-for-waiting/denial training.
@@ -6815,7 +6952,7 @@ IMPORTANT TERMINOLOGY CONSTRAINT: this clinic prohibits the words "sensory", "re
 
 WHAT TO FLAG (one finding per incoherence, per behavior):
   - Replacement-function mismatch: the replacement does not deliver the same function as the behavior (highest priority — mark BLOCKER). Example: behavior maintained by escape, but the replacement is "raise hand to request attention" → the replacement gives attention, not escape, so it will not compete with the escape behavior.
-  - Intervention-function mismatch: an intervention is incongruent with the function (mark BLOCKER if it would render treatment ineffective or unsafe; otherwise WARNING). Example: NCR attention prescribed for an escape-maintained behavior; attention extinction prescribed for an automatic behavior.
+  - Intervention-function mismatch: an intervention is incongruent with the function (mark BLOCKER if it would render treatment ineffective or unsafe; otherwise WARNING). Example: NCR attention prescribed for an escape-maintained behavior; attention extinction prescribed for an automatic behavior; attention withdrawal (ignoring, minimizing attention, looking away) prescribed for aggression, SIB, elopement, property destruction, tantrums or climbing (always BLOCKER).
   - Missing element: a target behavior has no stated function, OR a function is stated but no replacement is paired with it, OR a replacement/intervention set is present but the function was never identified (mark WARNING; mark BLOCKER if it is a dangerous behavior with no function-based replacement).
   - Function not grounded in FAST/MAS: the stated function contradicts or is not supported by the reported FAST/MAS pattern (mark WARNING).
 
@@ -7469,7 +7606,7 @@ RULES:
 - A replacement behavior is valid only if it is functionally equivalent to the behavior it replaces (same reinforcer, appropriate route). If suggesting replacements, respect the behavior's function.
 - This clinic PROHIBITS these words/concepts in clinical documentation; never propose them: sensory/sensorial, relaxation/relajación, calming/calmar, deep breathing, self-regulation, self-soothing, coping, mindfulness, meditation, yoga, problem solving, conflict resolution, social stories, anger management, art therapy, "emotional/feelings" as clinical explanations, and explanatory fiction ("due to frustration/confusion"). Use observable, measurable, function-based ABA language instead.
 - Caregivers/parents do NOT collect data. Their three roles: (1) antecedent/environmental strategies, (2) supporting replacement/acquisition goals, (3) delivering reinforcement.
-- Planned ignoring must never be used for aggression, SIB, elopement, or property destruction. Response blocking is brief (10–15 seconds).
+- Planned ignoring and any other attention withdrawal (attention extinction, minimizing attention, ignoring the behavior, looking away) must never be used for aggression, SIB, elopement, property destruction, tantrums or climbing. Response blocking is brief (10–15 seconds).
 - Ground every answer in the finding and document excerpt provided. Do NOT invent content that is not in the document. If you are unsure, say so and tell the analyst what to verify.
 - You advise; the BCBA decides and retains clinical responsibility.
 
@@ -7707,7 +7844,7 @@ TERMINOLOGY: never use these prohibited words/concepts: sensory, relaxation, cal
 
 HARD CONSTRAINTS (a violation makes the redesign unusable):
 - USE ONLY INTERVENTIONS ALREADY IN THIS PLAN. Draw congruent_interventions ONLY from the interventions the analyst already listed for this plan (see currentInterventions and the related findings). NEVER introduce an intervention the analyst did not include. If none of the plan's interventions are congruent with the function, say so in rationale_es instead of inventing one — do not fill the list with new techniques.
-- NEVER introduce Response Blocking, Response Interruption, planned ignoring, or any restrictive/crisis procedure UNLESS it is already in this plan AND the behavior is a documented safety crisis. Response blocking is crisis-only and brief (10–15 seconds); never use planned ignoring for aggression, SIB, elopement, or property destruction; do not use DRL for dangerous behaviors.
+- NEVER introduce Response Blocking, Response Interruption, planned ignoring, or any restrictive/crisis procedure UNLESS it is already in this plan AND the behavior is a documented safety crisis. Response blocking is crisis-only and brief (10–15 seconds); never use planned ignoring or any attention withdrawal for aggression, SIB, elopement, property destruction, tantrums or climbing; do not use DRL for dangerous behaviors.
 - DO NOT re-define or re-add an intervention that is already listed in the plan (e.g., Differential Reinforcement). Reference it by name; never present an already-listed intervention as if it were new.
 - PRESERVE the analyst's documented procedures and numeric criteria. Never swap one procedure for another (e.g., DRO to DRA) and never invent, alter, or drop numbers, percentages, trial counts, or criteria.
 
@@ -7898,6 +8035,7 @@ const REPORT_CAT_LABELS={
     regulatory_compliance:'Regulatory compliance',
     clinical_safety:'Clinical safety',
     prohibited_intervention:'Non-ABA intervention',
+    replacement_as_intervention:'Replacement listed as intervention',
     emotional_state:'Non-observable language (clinical)',
     role_articles:'Article usage',
     caregiver_scope:'Caregiver scope',
@@ -8473,13 +8611,15 @@ function generalRecommendations(findings){
   if(anyCat('functional_coherence','topography_overlap'))
     recs.push('Alinear cada conducta con su función: asegurar que el reemplazo y las intervenciones sean funcionalmente equivalentes (que produzcan el mismo reforzador que la conducta que reemplazan) y documentar la función (FAST/MAS) donde no esté clara.');
   if(anyCat('clinical_safety'))
-    recs.push('Revisar los procedimientos de seguridad: no usar planned ignoring ni DRL en conductas peligrosas (agresión, SIB, elopement, destrucción de propiedad); limitar el response blocking a situaciones de crisis y a 10–15 segundos.');
+    recs.push('Revisar los procedimientos de seguridad: no usar planned ignoring ni ninguna retirada de atención, ni DRL, en conductas peligrosas (agresión, SIB, elopement, destrucción de propiedad); limitar el response blocking a situaciones de crisis y a 10–15 segundos.');
   if(anyText(/age_inconsistency/)||anyCat('internal_contradiction'))
     recs.push('Resolver las inconsistencias internas (edad, horas, funciones, criterios) y alinear todo el documento a una sola versión correcta; el sistema solo señala — la decisión es del analista.');
   if(anyText(/sto_|\bsto\b|objetivo|progres/))
     recs.push('Revisar los objetivos (STO/LTO): un objetivo por fila sin etiquetas duplicadas, criterios de medición sin repetir, y una progresión coherente (el valor inicial de cada STO igual al final del anterior).');
   if(anyCat('regulatory_completeness'))
     recs.push('Completar las secciones requeridas ausentes o poco identificadas, con encabezados y terminología estándar de un assessment de Florida Medicaid.');
+  if(anyCat('replacement_as_intervention'))
+    recs.push('Sacar de la lista de intervenciones los programas de reemplazo/adquisición (se enseñan, no se aplican para reducir la conducta) y dejarlos solo en la sección de reemplazos; revisar en el original si una tabla partida entre páginas desalineó las columnas.');
   if(anyCat('emotional_state','prohibited_concept','prohibited_intervention')||anyText(/proh_|term_/))
     recs.push('Reemplazar el lenguaje emocional/mentalista y las intervenciones no-ABA por descripciones observables y medibles y por procedimientos basados en la función.');
   if(anyCat('role_articles','language_style'))
@@ -9810,6 +9950,7 @@ function getCorrectionComment(finding){
   const map={
     prohibited_terminology:'replace with observable behavioral description',
     prohibited_intervention:'replace with authorized intervention compatible with the behavior function',
+    replacement_as_intervention:'keep this replacement/acquisition program only in the replacement section; list as interventions only the procedures that reduce the behavior',
     explanatory_fiction:'replace with observable antecedent and behavior description',
     role_articles:'use proper article (the BCBA, the RBT, the BCaBA)',
     copy_paste_contamination:'verify against actual client information and correct',
