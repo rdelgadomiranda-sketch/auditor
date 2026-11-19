@@ -404,6 +404,37 @@ Ningún hallazgo anterior se perdió: las diferencias son solo altas.
 
 ---
 
+### 1.16 Response blocking: una tarjeta, y solo el procedimiento nombrado
+
+Las dos cosas que el §1.15 dejó abiertas, decididas por Rolando el 19 de noviembre después de ver la regla disparar por primera vez (hasta el 11 de octubre estuvo muerta por los caracteres de retroceso).
+
+**Se fue el `blocking` a secas.** El patrón era `/\b(response blocking|protective response blocking|blocking)\b/gi`, y la tercera alternativa era un coladero: el procedimiento se llama *response blocking*, mientras que `blocking` suelto es una palabra corriente en un documento de ABA y describe la conducta del **cliente** o una acción del personal que no es el procedimiento. En el reassessment de Safira sus tres únicas apariciones eran *«may require physical blocking of behavior»* y *«without physical blocking or maladaptive behavior»* —un criterio de meta, no una prescripción— y daban **tres blockers falsos**. En su lugar entran las dos formas que los documentos sí usan para nombrarlo: `blocking procedure` y `blocking technique(s)`.
+
+El patrón queda:
+
+```
+/\b(?:protective\s+response\s+blocking|response\s+blocking|blocking\s+procedures?|blocking\s+techniques?)\b/gi
+```
+
+La forma larga va **primera** en la alternancia, para que `protective response blocking` se cite entera y no como `response blocking`.
+
+**Una sola tarjeta.** Antes salía una por aparición: doce idénticas en el assessment de Abrahan. Mismo criterio que el §1.10, y el que defiende el propio comentario de la v2.2: varias tarjetas iguales son lo que hace que se deje de leer el panel. La tarjeta lleva `occurrences`, la posición de la **primera** mención sin duración, y las formas distintas en el texto («Aparece 4 veces sin la duración al lado, como "Response Blocking", "blocking procedure" y "blocking techniques"»). Solo cuentan las menciones **sin** duración: si el documento nombra el procedimiento cinco veces y tres llevan los 10-15 s al lado, la tarjeta habla de dos.
+
+**Alcance:** solo esta regla. `CLINICAL_SAFETY_RULES` sigue emitiendo una tarjeta por aparición en las demás —`PLANNED_IGNORING_AGGRESSION` ya deduplica a 40 caracteres por su cuenta— porque Rolando pidió esta y las otras son suyas.
+
+**Lo que sigue abierto, y no se tocó porque no se pidió:** `hasDuration` mira una ventana de −200/+300 caracteres, así que **cualquier** «10 segundos» o «15 segundos» de la vecindad la satisface, aunque pertenezca a otro criterio. Se vio construyendo la prueba de humo: un *«handing the break card within 10 seconds of the demand»* en la línea de arriba silenciaba el hallazgo. Es la misma familia que los otros bugs de este proyecto —una cifra al lado de la etiqueta equivocada— y el arreglo sería exigir que la duración esté en la misma cláusula que el procedimiento, no en la vecindad.
+
+**Validación, con una limitación que importa.** El scratchpad de la sesión se vació entre el 11 de octubre y el 19 de noviembre, así que **se perdieron las 22 harnesses de Node, las 14 pasadas de navegador, `auditar.js` y los tres documentos reales** (eran PHI y nunca se commitearon: no hay copia en ninguna parte). No se pudo medir el efecto de extremo a extremo sobre Jade, Abrahan y Safira.
+
+Lo que sí se hizo:
+
+- `rb_browser.js` — **14 casos** sobre la regla real de la página, **seis de ellos frases textuales** de los tres assessments, conservadas de la conversación antes de perder los archivos: las tres de Safira que daban el falso positivo, la de Jade con `(15 sec)`, la de Jade con «blocking her from aggressing», y las dos de Abrahan. Más la prueba de agregación (cuatro menciones → una tarjeta, `occurrences` 4) y un control de que `DRL_DANGEROUS` y `PLANNED_IGNORING_AGGRESSION` siguen disparando.
+- `humo_browser.js` — los **24 escaneos deterministas** sobre un assessment sintético, comprobando que ninguno lanza, que las reglas de los PR #6, #8, #9 y #10 siguen vivas, y que `RESPONSE_BLOCKING_DURATION` da exactamente **una** tarjeta. No reemplaza a las 22 harnesses: es una red de humo, no cobertura equivalente.
+
+Si Rolando vuelve a subir los tres documentos, la medición de extremo a extremo se puede repetir.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.

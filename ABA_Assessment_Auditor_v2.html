@@ -980,25 +980,48 @@ const CLINICAL_SAFETY_RULES = [
   },
   {
     id:'RESPONSE_BLOCKING_DURATION',severity:'blocker',category:'clinical_safety',
+    /* Dos arreglos del 19 nov 2026, decididos por Rolando despues de ver la regla
+       disparar por primera vez (hasta el 11 de octubre estuvo muerta por los
+       caracteres de retroceso, ver §1.15 del contexto).
+
+       1. SE FUE EL «blocking» A SECAS. El procedimiento se llama «response
+          blocking»; «blocking» suelto es una palabra corriente en un documento
+          de ABA y describe la conducta del CLIENTE o una accion del personal que
+          no es el procedimiento. En el reassessment de Safira sus tres unicas
+          apariciones eran «may require physical blocking of behavior» y
+          «without physical blocking or maladaptive behavior» —un criterio de
+          meta, no una prescripcion— y daban tres blockers falsos. En su lugar
+          entran las dos formas que los documentos si usan para nombrar el
+          procedimiento: «blocking procedure» y «blocking technique(s)».
+
+       2. UNA SOLA TARJETA. Antes salia una por aparicion: doce identicas en el
+          assessment de Abrahan. Es el mismo criterio del §1.10 y el que el
+          comentario de la v2.2 defiende: varias tarjetas iguales son lo que
+          hace que se deje de leer el panel. */
     test: function(text){
-      const findings=[];
-      const rbPattern=/\b(response blocking|protective response blocking|blocking)\b/gi;
-      const rbMatches=[...text.matchAll(rbPattern)];
-      for(const m of rbMatches){
+      const rbPattern=/\b(?:protective\s+response\s+blocking|response\s+blocking|blocking\s+procedures?|blocking\s+techniques?)\b/gi;
+      const sinDuracion=[];
+      for(const m of text.matchAll(rbPattern)){
         const ctx=text.slice(Math.max(0,m.index-200),m.index+300).toLowerCase();
         const hasDuration=/(10|15|ten|fifteen)\s*(to|–|-|and)?\s*(15|twenty|seconds?|sec\b)/.test(ctx)||/10[\s-–]15\s*sec/.test(ctx);
-        if(!hasDuration){
-          findings.push({
+        if(!hasDuration)sinDuracion.push({match:m[0],index:m.index});
+      }
+      if(!sinDuracion.length)return[];
+      const primero=sinDuracion[0];
+      // Formas distintas de nombrarlo, para que el analista las encuentre todas.
+      const formas=[...new Set(sinDuracion.map(o=>o.match))];
+      const cuantas=sinDuracion.length>1
+        ? ` Aparece ${sinDuracion.length} veces sin la duración al lado${formas.length>1?`, como ${formas.slice(0,-1).map(f=>'"'+f+'"').join(', ')} y "${formas[formas.length-1]}"`:''}.`
+        : '';
+      return[{
             ruleId:'RESPONSE_BLOCKING_DURATION',severity:'blocker',category:'clinical_safety',
-            description:'Response blocking is documented without specifying the required short duration constraint (10–15 seconds). Per Medicaid and BACB standards, response blocking must be time-limited to prevent it from functioning as a restraint procedure.',
-            matchedText:m[0],context:extractContext(text,m.index,m[0].length),position:m.index,
+            description:'Response blocking is documented without specifying the required short duration constraint (10–15 seconds). Per Medicaid and BACB standards, response blocking must be time-limited to prevent it from functioning as a restraint procedure.'+cuantas,
+            matchedText:primero.match,context:extractContext(text,primero.index,primero.match.length),position:primero.index,
+            occurrences:sinDuracion.length,
             suggestedAction:'Add explicit duration: "Response blocking will be applied for 10–15 seconds only, followed by immediate redirection to the replacement behavior."',
             suggestedRewrite:'Protective response blocking will be applied for 10–15 seconds to prevent the completion of the behavior, followed by immediate prompting and reinforcement of the replacement response.',
             status:'open',createdAt:Date.now()
-          });
-        }
-      }
-      return findings;
+      }];
     }
   },
   {
