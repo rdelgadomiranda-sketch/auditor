@@ -1921,6 +1921,16 @@ async function runAudit(){
     findings=findings.concat(scanCommunicationCongruence(text));
     findings=findings.concat(scanSTOIntegrity(text));
 
+    /* v2.3: procedimiento restrictivo o de retirada de atencion en zona de
+       escalada. Va en la capa DETERMINISTA, no dentro de if(state.apiKey): la
+       decision de Rolando fue «alertar siempre, con la sugerencia personalizada
+       si hay canonico», y la primera version la dejo dentro del bloque de la
+       API, donde no habria corrido sin clave. Recibe el canonico CACHEADO en el
+       documento, asi que la sugerencia se personaliza desde la segunda auditoria
+       del mismo documento; en la primera, sin canonico todavia, da la
+       alternativa generica del procedimiento y no inventa funcion. */
+    findings=findings.concat(scanRestrictiveInRiskContext(text,state.currentDoc.docType,state.currentDoc.canonical));
+
     if(state.apiKey){
       // ---- Canonical extraction (cached on the document) ----
       // Extract the structured behavioral spine once. Cache it on the doc so
@@ -1984,11 +1994,6 @@ async function runAudit(){
       // v2.2: un programa de reemplazo listado como intervencion. Usa el canonico
       // (los nombres de los reemplazos salen de la extraccion), por eso corre aqui.
       findings=findings.concat(scanReplacementAsIntervention(text,state.currentDoc.canonical));
-
-      // v2.3: procedimiento restrictivo o de retirada de atencion en zona de
-      // escalada. Alerta sin canonico; con el, personaliza por topografia y
-      // funcion, asi que corre aqui para aprovecharlo cuando exista.
-      findings=findings.concat(scanRestrictiveInRiskContext(text,state.currentDoc.docType,state.currentDoc.canonical));
 
       const docSizeKB=Math.round(state.currentDoc.text.length/1024);
       setProg(82,`Running deep clinical & regulatory audit on full document (${docSizeKB} KB)... this can take 20-60 seconds`);
@@ -3064,6 +3069,8 @@ const ESCALATION_PRONE=[
   'grabbing','grabs','snatching','spitting','spits','stripping','disrobing',
   'cursing','profanity','verbal threat','verbal threats','threatening',
   'stomping','slamming','banging objects','pounding','clearing surfaces',
+  /* Vistas en los doce assessments medidos, y que faltaban: */
+  'outburst','outbursts','disruptive behavior','disruptive behaviour','disruption','off-task',
   'grito','gritos','llanto','negativa','rabieta leve','escupir','agarrar'
 ];
 
@@ -3076,6 +3083,37 @@ const ESCALATION_LANGUAGE=/\b(?:escalat\w*|precursors?|may\s+(?:become|lead\s+to
    el precedente del §1.14 manda — no se mueve lo compartido sin que se pida.
    Si alguna vez cambia alla, cambiar aqui tambien. */
 const ATTENTION_WITHDRAWAL_RE=/\bplanned\s+ignoring\b|\battention\s+extinction\b|\bextinction\s+of\s+(?:the\s+)?attention\b|\b(?:withhold(?:ing|s)?|withheld|minimi[sz](?:e|es|ed|ing)|withdraw(?:ing|s|n)?|remov(?:e|es|ed|ing))\s+(?:the\s+)?(?:social\s+)?attention\b|\bignor(?:e|es|ing)\s+the\s+behavio\w*\b/gi;
+
+/* MENCIONAR NO ES PRESCRIBIR, por tercera vez en este proyecto, y la medicion
+   sobre doce assessments reales lo dejo en evidencia: de 14 tarjetas, 6 eran
+   «physical prompts» de una jerarquia de prompts y varias de RIRD eran menus de
+   estrategias. La vecindad de 300 caracteres creaba una atribucion que el texto
+   no hace. Asi que el procedimiento tiene que estar PRESCRITO en su clausula. */
+const PROC_PRESCRITO=/\b(?:will\s+be\s+(?:the\s+\w+\s+)?(?:used|implemented|applied|utilized|delivered)|is\s+(?:used|implemented|applied|utilized|delivered)|are\s+(?:used|implemented|applied|utilized)|shall\s+be\s+used|(?:staff|RBT|BCBA|BCaBA|analyst|therapist|technician|caregiver|parent)\s+will\s+\w+|will\s+implement|implement(?:s|ed)\b|appl(?:ies|ied)\b|contingent\s+(?:up)?on|in\s+response\s+to\s+the\s+behavio|as\s+a\s+consequence|following\s+(?:each\s+)?(?:the\s+)?(?:behavio|incident|episode|occurrence)|when\s+the\s+behavio\w*\s+occurs|se\s+(?:usar[aá]|aplicar[aá]|implementar[aá]|utilizar[aá]))/i;
+
+/* La OTRA via, y la que de verdad usa este corpus: el procedimiento esta atado a
+   una conducta justo detras, con una preposicion de enlace. Asi lo escriben, en
+   imperativo y en celdas de tabla — «Withhold or minimize attention FOR Property
+   Destruction», «... TO maladaptive behaviors maintained by attention» — y no con
+   «will be used». Exigir solo el verbo prescriptivo dejo la regla muda en los
+   doce documentos medidos, que es peor que inutil: es falsa tranquilidad.
+   Se mira DETRAS del procedimiento, no en toda la clausula, porque el enlace
+   tiene que ser suyo y no de otra frase. */
+const PROC_ATADO_A_CONDUCTA=/^[^.]{0,140}?\b(?:behaviou?rs?|maladaptive|aggress\w+|\bsib\b|self-?injur\w+|tantrums?|outbursts?|meltdowns?|destruction|elopement|scream\w*|yell\w*|cry\w*|cries\b|whin\w+|refus\w+|noncompliance|non-compliance|stereotyp\w+|disrupt\w+|property|bolting|climbing|spitting|grabbing)\b/i;
+
+/* Marco DESCRIPTIVO estrecho: el documento esta DEFINIENDO el procedimiento o
+   citando literatura, no prescribiendolo. Veta aunque haya un verbo prescriptivo
+   suelto en la clausula. Deliberadamente corto: un «including» a secas NO veta,
+   porque «interventions include planned ignoring for screaming» si prescribe. */
+const PROC_DESCRIPTIVO=/\b(?:is\s+an\s+evidence[- ]based|contains\s+(?:two|three)\s+main\s+components?|is\s+defined\s+as\s+a\s+(?:procedure|practice)|refers\s+to\s+a\s+(?:procedure|practice)|according\s+to\s+the\s+literature|research\s+(?:has\s+)?(?:shown|demonstrated)|in\s+the\s+(?:case|event)\s+that|should\s+(?:it|they|this|these)\s+be\s+(?:used|needed|required)|if\s+(?:it|they|these)\s+(?:is|are)\s+used|least\s+restrictive\s+strategies|procedures\s+will\s+be\s+described)\b/i;
+
+/* Vocabulario de JERARQUIA DE PROMPTS: ahi la guia fisica es ENSENANZA, no una
+   consecuencia. El caso que lo destapo, repetido 22 veces en un reassessment:
+   «with full prompts (including physical guidance and frequent redirection)». */
+const PROMPT_HIERARCHY=/\b(?:prompt\s+(?:hierarch\w+|level|fading)|least[-\s]to[-\s]most|most[-\s]to[-\s]least|fade\s+(?:the\s+)?prompt|full\s+prompts?|partial\s+(?:physical|prompt)|full\s+physical|gestural\s+prompt|model\s+prompt|independent\s+(?:response|performance)|prompted\s+trials?|jerarqu[ií]a\s+de\s+(?:prompts|ayudas))\b/i;
+
+/* Senal de que la guia fisica se usa COMO CONSECUENCIA de la conducta. */
+const GUIA_COMO_CONSECUENCIA=/\b(?:contingent\s+(?:up)?on|in\s+response\s+to|as\s+a\s+consequence|following\s+(?:each\s+)?(?:the\s+)?(?:behavio|incident|episode|occurrence)|when\s+(?:the\s+)?(?:behavio\w*\s+occurs|client|child|recipient|he|she|they)\s+(?:is|are|engages|begins|starts|displays|exhibits|will\s+not)\b|to\s+(?:interrupt|block|stop)\s+the\s+behavio|to\s+prevent\s+(?:the\s+)?(?:completion|behavio)|consequence\s+procedure)\b/i;
 
 /* Los procedimientos que vigila la regla. */
 const RESTRICTIVE_PROCEDURES=[
@@ -3090,6 +3128,8 @@ const RESTRICTIVE_PROCEDURES=[
   {id:'PHYSICAL_GUIDANCE', etiqueta:'guía física o mano sobre mano como consecuencia',
    re:/\bhand[-\s]over[-\s]hand\b|\bphysical\s+(?:guidance|prompting|prompts?|assistance)\b|\bmanual\s+guidance\b|\bgu[ií]a\s+f[ií]sica\b|\bmano\s+sobre\s+mano\b/gi,
    encajaCon:null,
+   exigeConsecuencia:true,          // si es ensenanza no es esta regla
+   vetaSi:PROMPT_HIERARCHY,
    generica:'Physical guidance used as a consequence sits at the edge of restraint. State whether it is teaching (a prompt inside a prompt hierarchy, with a fading plan) or a consequence; if it is a consequence, replace it with the function-matched procedure.'},
   {id:'RESPONSE_COST', etiqueta:'costo de respuesta o sobrecorrección',
    re:/\bresponse\s+cost\b|\bovercorrection\b|\bpositive\s+practice\b|\bloss\s+of\s+(?:points|tokens|privileges)\b|\bremoval\s+of\s+(?:points|tokens)\b|\bcosto\s+de\s+respuesta\b|\bsobrecorrecci[oó]n\b/gi,
@@ -3168,6 +3208,20 @@ function scanRestrictiveInRiskContext(text,docType,canonical){
          excluidos y trae documentado por que la ventana es estrecha. */
       const despues=t.slice(m.index+m[0].length,m.index+m[0].length+90);
       if(FL_NEGATION_AFTER_RES.some(re=>re.test(despues)))continue;
+      /* El procedimiento tiene que estar PRESCRITO en su clausula, no solo
+         mencionado en un menu de estrategias ni definido como practica. */
+      const clausula=_termSentence(t,m.index,m[0].length);
+      const detras=t.slice(m.index+m[0].length,m.index+m[0].length+140);
+      if(!PROC_PRESCRITO.test(clausula)&&!PROC_ATADO_A_CONDUCTA.test(detras))continue;
+      if(PROC_DESCRIPTIVO.test(clausula))continue;
+      /* Negacion del PREDICADO, mas lejos de lo que alcanza FL_NEGATION_AFTER_RES:
+         «A general instruction to withhold attention, breaks, or preferred items
+         across all behaviors IS NOT APPROPRIATE» es el documento advirtiendo
+         contra la practica, y la negacion cuelga de todo el sujeto. Se vio en un
+         reassessment real, donde daba un falso positivo. */
+      if(/\b(?:is|are)\s+(?:not\s+(?:appropriate|recommended|indicated|permitted)|inappropriate|never\s+appropriate)\b|\b(?:should|must)\s+not\s+be\s+(?:used|implemented|applied)\b/i.test(clausula))continue;
+      if(proc.vetaSi&&proc.vetaSi.test(clausula))continue;
+      if(proc.exigeConsecuencia&&!GUIA_COMO_CONSECUENCIA.test(clausula))continue;
       const riesgo=_escalaRiesgo(t,m.index,!!proc.blockerLoCubre);
       if(!riesgo)continue;
       if(vivas.some(o=>Math.abs(o.index-m.index)<40))continue;   // una mencion, un hallazgo

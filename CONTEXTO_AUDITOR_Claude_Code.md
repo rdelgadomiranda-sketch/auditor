@@ -467,11 +467,38 @@ Por eso el restraint (`FL_EXCLUDED_RESTRAINT`) y el response blocking (`RESPONSE
 
 **La sugerencia.** `CONGRUENT_BY_FUNCTION` pone en código la tabla función → procedimientos congruentes que hasta ahora vivía **solo en el prompt de coherencia**, de modo que se puede citar sin IA. Con canónico la tarjeta nombra la conducta, su topografía textual y su función, y la acción sugerida propone las congruentes de esa función; sin canónico da la alternativa genérica del procedimiento y **no inventa** una función. Si la función es `unstated`, lo dice: *«el documento no establece la función de esa conducta, y sin función no se puede elegir el procedimiento»*.
 
+**Un fallo propio que la medición destapó antes de mergear:** la primera versión colgaba la llamada **dentro de `if(state.apiKey)`**, así que la regla no habría corrido sin clave de API — lo contrario de la decisión de Rolando («alertar siempre») y de lo que el PR afirmaba. Ahora va en la capa determinista, con el canónico **cacheado** en el documento: la sugerencia se personaliza desde la segunda auditoría del mismo documento, y en la primera da la alternativa genérica sin inventar función.
+
 **Conectada en los seis sitios** que la lección del §1.12 exige: `runAudit` (después de `scanReplacementAsIntervention`, para aprovechar el canónico), `REPORT_CAT_LABELS`, las recomendaciones del informe, el mapa de sugerencias, `CRITIC_NEVER_AUTODISMISS` —una alerta de seguridad no se auto-descarta— y la fila `ABA_PROHIBITED_PROCEDURES` de `AUDIT_REQUIREMENTS`, que ya agrupa las reglas clínicas de Rolando y sigue marcada `convencion`. Sin fila nueva: siguen siendo 35 requisitos.
 
 **Validación:** `restr_browser.js`, **31 aserciones** sobre la función real — 16 de qué dispara y qué no (los cinco procedimientos, las tres vías de escalada, el reparto con los blockers, lo negado por delante y por detrás, lo que cita el cuidador), severidad y categoría, la sugerencia con y sin canónico, el caso de RIRD + automático, el de función no establecida, la agregación, los tres `docType` donde no corre, y un control de que los tres blockers vigentes siguen disparando. Más `rb_browser.js` y `humo_browser.js` en verde. `node --check` limpio, cero mojibake, cero caracteres de control.
 
-**Lo que no se pudo medir:** los tres documentos reales siguen perdidos (§1.16), así que no se sabe cuántas alertas sacaría esto sobre Jade, Abrahan y Safira. Es la medición que falta.
+**Medido el 20 nov sobre DOCE assessments reales** (9 reassessments, 3 iniciales, incluidos Jade, Abrahan y Safira), traídos de la carpeta de Drive de Rolando. **Hizo falta narrar cinco rondas de ajuste, y eso es lo más útil que dejó la medición:**
+
+| Ronda | Tarjetas v2.3 | Qué enseñó |
+|---|---|---|
+| 1 | **14** | 6 eran `physical prompts` de una **jerarquía de prompts** —*«with full prompts (including physical guidance and frequent redirection)»*, 22 veces en un solo documento— y varias de RIRD eran **menús de estrategias**. La vecindad de 300 caracteres creaba una atribución que el texto no hace |
+| 2 | **0** | Exigir un verbo prescriptivo (`will be used`) dejó la regla **muda en los doce**: estos documentos prescriben en **imperativo y en celdas de tabla** —*«Withhold or minimize attention for Property Destruction»*—, no en oraciones completas. Una regla que nunca habla es peor que inútil: es falsa tranquilidad |
+| 3 | **3** | Segunda vía: el procedimiento **atado a una conducta en su misma oración**, sin punto en medio. Faltaban topografías que el corpus sí usa (`outburst`, `disruptive behavior`, `off-task`) |
+| 4 | **5** | Dos falsos más: una **declaración de política** (*«In the case that Response Cost or Simple Corrections are used, procedures will be described»*) y un **marco condicional** |
+| 5 | **4** | El último: el documento **advirtiendo contra** la práctica (*«A general instruction to withhold attention… is not appropriate»*), con la negación colgando de todo el sujeto, fuera del alcance de tres palabras de `FL_NEGATION_AFTER_RES` |
+
+**Estado final: 4 tarjetas en 12 documentos** — Jade (×2), REAssessment32026MR, Efrain-R. Revisadas una a una contra el texto fuente. La que mejor muestra para qué sirve la regla es la de Jade: *«Token Economy (if already part of the treatment plan), **Planned Ignoring of minor refusal behaviors (when appropriate and safe)**, represent the same food after a brief interval»* — planned ignoring prescrito sobre negativa, en un protocolo de alimentación, con el hedge «when appropriate and safe» en un plan que documenta agresión física y SIB.
+
+**Las cinco guardas que salieron de ahí**, todas en el código y todas con un caso real que las fija en `restr_browser.js`:
+
+1. `PROC_PRESCRITO` **o** `PROC_ATADO_A_CONDUCTA` — una de las dos vías basta. La segunda es la que de verdad usa este corpus.
+2. `PROC_DESCRIPTIVO` — veta la definición de la práctica y el marco condicional o de política.
+3. `PROMPT_HIERARCHY` — veta la guía física cuando es enseñanza.
+4. `GUIA_COMO_CONSECUENCIA` — la guía física solo cuenta si es contingente a la conducta.
+5. Negación del **predicado** en la cláusula, más lejos de lo que alcanza `FL_NEGATION_AFTER_RES`.
+
+**Dos cosas que la medición encontró y que NO son de esta regla, sino de las de Rolando:**
+
+- **`PLANNED_IGNORING_AGGRESSION` no agrega:** en el assessment de Efrain-R saca **16 blockers idénticos** (de 38 totales; los otros 21 son `FL_GOAL_ELEMENT_TBD`). Es el mismo defecto que el §1.16 arregló para el response blocking, y esa regla es suya.
+- **`outburst` falta en `DANGEROUS_BEHAVIORS`**, aunque `tantrum` y `meltdown` sí están. Un *«Withhold or minimize attention for Outburst»* no lo coge el blocker v2.1; lo coge esta regla como warning solo porque `outburst` se añadió a `ESCALATION_PRONE`. Decisión de Rolando.
+
+**Límites de esta medición, que hay que decir:** el texto lo extrajo el conector de Drive, **no pdf.js**, así que los totales por documento **no son comparables** con las líneas base de septiembre y octubre (18/16/18 → 26/28/21). Y las pasadas de IA estaban desactivadas, así que el canónico no existía: se midió **cuándo alerta y cuándo calla**, que es lo que más riesgo tenía, pero no la sugerencia personalizada por topografía y función, que sigue cubierta solo con canónicos sintéticos.
 
 ---
 
