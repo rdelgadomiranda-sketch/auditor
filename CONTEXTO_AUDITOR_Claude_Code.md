@@ -435,6 +435,46 @@ Si Rolando vuelve a subir los tres documentos, la medición de extremo a extremo
 
 ---
 
+### 1.17 Procedimiento restrictivo o de retirada de atención en zona de escalada (`scanRestrictiveInRiskContext`)
+
+**Propuesta de Rolando** (20 nov 2026): *«el auditor debe alertar cuando se usen intervenciones restrictivas, o de atención, en situaciones que pueden llegar a generar riesgos si es que escalan, por lo menos alertar y sugerir cuáles serían las mejores opciones a seguir según el tipo de comportamiento (topografía y función)»*. Decidió: **warning siempre**, los cuatro grupos de procedimientos, escalada por topografía propensa **o** por lo que diga el documento, y alerta determinista con sugerencia personalizada cuando hay canónico.
+
+**El reparto con los blockers que ya existían**, que es lo que evita duplicar:
+
+| Situación | Quién la reporta |
+|---|---|
+| El peligro **ya está** y hay blocker que lo cubre (retirada de atención) | `PLANNED_IGNORING_AGGRESSION` (v2.1) — esta regla calla |
+| El peligro **ya está** y **no** hay blocker (time-out, RIRD, guía física, costo de respuesta) | esta regla, y el peligro documentado es su señal más fuerte |
+| El peligro **puede llegar** (topografía propensa, o el documento lo dice) | esta regla, `warning` |
+
+Por eso el restraint (`FL_EXCLUDED_RESTRAINT`) y el response blocking (`RESPONSE_BLOCKING_DURATION`) **no** están en la lista: ya tienen su blocker.
+
+**Un hueco que destapó una prueba, y conviene no reintroducirlo.** La primera versión callaba siempre que hubiera una conducta de `DANGEROUS_BEHAVIORS` en la vecindad, «porque manda el blocker». El caso *«Overcorrection follows the behavior, which may lead to aggression»* no lo reportaba **nadie**: la sobrecorrección no está en ningún blocker, y la palabra `aggression` de la propia frase de escalada activaba el guard. El guard ahora solo vale para la retirada de atención, que es la única con blocker propio.
+
+**Qué vigila.** `RESTRICTIVE_PROCEDURES`, una tarjeta por procedimiento (§1.10, §1.16), porque cada uno necesita un consejo distinto pero doce avisos del mismo no:
+
+- `RIRD` — RIRD, response interruption (and redirection). Lleva `encajaCon:'automatic'`: cuando la función documentada **es** automática, la tarjeta lo dice —*«para esa función el procedimiento SÍ es el indicado»*— y pide acotarlo, no cambiarlo. No se regaña a una analista por usar RIRD en estereotipia.
+- `TIMEOUT` — time-out, exclusionary time-out, seclusión, observación contingente, retirar al cliente del área o la actividad.
+- `PHYSICAL_GUIDANCE` — hand-over-hand, guía física o manual, prompting físico **como consecuencia**. La tarjeta pide distinguir enseñanza (prompt dentro de una jerarquía, con plan de desvanecimiento) de consecuencia.
+- `RESPONSE_COST` — response cost, overcorrection, práctica positiva, pérdida de puntos o fichas.
+- `ATTENTION_WITHDRAWAL` — las mismas formas que la regla v2.1.
+
+**Duplicación deliberada:** `ATTENTION_WITHDRAWAL_RE` repite el patrón de la v2.1 en vez de extraerlo a una constante compartida. Precedente del §1.14: no se mueve lo compartido sin que se pida, y aquella es un **blocker de seguridad** de Rolando. Si cambia allá, cambiar aquí.
+
+**Cómo se decide que puede escalar** (`_escalaRiesgo`). `ESCALATION_PRONE` lista conductas que todavía no son peligrosas pero suelen escalar —grito, llanto, queja, negativa, tirarse al suelo, agarrar, escupir, amenaza verbal— y **no repite nada** de `DANGEROUS_BEHAVIORS`: esta regla es la zona gris. `ESCALATION_LANGUAGE` recoge lo que el documento dice: `escalat*`, `precursor`, `may lead to aggression`, `intensif*`, y las formas en español.
+
+**Las exenciones son las de la casa, y una de ellas hubo que añadirla.** `_termNegated` (hacia atrás) y `_quotedOrCaregiverReported` ya estaban, pero *«Time-out is prohibited for this client, who screams during transitions»* seguía disparando: la negación va **después**, en el predicado. Se reutiliza **`FL_NEGATION_AFTER_RES`**, que ya resuelve esa forma para los servicios excluidos y trae documentado por qué su ventana es estrecha. Tercera vez en el proyecto que la lección es la misma: *mencionar no es prescribir*.
+
+**La sugerencia.** `CONGRUENT_BY_FUNCTION` pone en código la tabla función → procedimientos congruentes que hasta ahora vivía **solo en el prompt de coherencia**, de modo que se puede citar sin IA. Con canónico la tarjeta nombra la conducta, su topografía textual y su función, y la acción sugerida propone las congruentes de esa función; sin canónico da la alternativa genérica del procedimiento y **no inventa** una función. Si la función es `unstated`, lo dice: *«el documento no establece la función de esa conducta, y sin función no se puede elegir el procedimiento»*.
+
+**Conectada en los seis sitios** que la lección del §1.12 exige: `runAudit` (después de `scanReplacementAsIntervention`, para aprovechar el canónico), `REPORT_CAT_LABELS`, las recomendaciones del informe, el mapa de sugerencias, `CRITIC_NEVER_AUTODISMISS` —una alerta de seguridad no se auto-descarta— y la fila `ABA_PROHIBITED_PROCEDURES` de `AUDIT_REQUIREMENTS`, que ya agrupa las reglas clínicas de Rolando y sigue marcada `convencion`. Sin fila nueva: siguen siendo 35 requisitos.
+
+**Validación:** `restr_browser.js`, **31 aserciones** sobre la función real — 16 de qué dispara y qué no (los cinco procedimientos, las tres vías de escalada, el reparto con los blockers, lo negado por delante y por detrás, lo que cita el cuidador), severidad y categoría, la sugerencia con y sin canónico, el caso de RIRD + automático, el de función no establecida, la agregación, los tres `docType` donde no corre, y un control de que los tres blockers vigentes siguen disparando. Más `rb_browser.js` y `humo_browser.js` en verde. `node --check` limpio, cero mojibake, cero caracteres de control.
+
+**Lo que no se pudo medir:** los tres documentos reales siguen perdidos (§1.16), así que no se sabe cuántas alertas sacaría esto sobre Jade, Abrahan y Safira. Es la medición que falta.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.
