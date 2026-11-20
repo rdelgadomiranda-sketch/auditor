@@ -980,25 +980,48 @@ const CLINICAL_SAFETY_RULES = [
   },
   {
     id:'RESPONSE_BLOCKING_DURATION',severity:'blocker',category:'clinical_safety',
+    /* Dos arreglos del 19 nov 2026, decididos por Rolando despues de ver la regla
+       disparar por primera vez (hasta el 11 de octubre estuvo muerta por los
+       caracteres de retroceso, ver §1.15 del contexto).
+
+       1. SE FUE EL «blocking» A SECAS. El procedimiento se llama «response
+          blocking»; «blocking» suelto es una palabra corriente en un documento
+          de ABA y describe la conducta del CLIENTE o una accion del personal que
+          no es el procedimiento. En el reassessment de Safira sus tres unicas
+          apariciones eran «may require physical blocking of behavior» y
+          «without physical blocking or maladaptive behavior» —un criterio de
+          meta, no una prescripcion— y daban tres blockers falsos. En su lugar
+          entran las dos formas que los documentos si usan para nombrar el
+          procedimiento: «blocking procedure» y «blocking technique(s)».
+
+       2. UNA SOLA TARJETA. Antes salia una por aparicion: doce identicas en el
+          assessment de Abrahan. Es el mismo criterio del §1.10 y el que el
+          comentario de la v2.2 defiende: varias tarjetas iguales son lo que
+          hace que se deje de leer el panel. */
     test: function(text){
-      const findings=[];
-      const rbPattern=/\b(response blocking|protective response blocking|blocking)\b/gi;
-      const rbMatches=[...text.matchAll(rbPattern)];
-      for(const m of rbMatches){
+      const rbPattern=/\b(?:protective\s+response\s+blocking|response\s+blocking|blocking\s+procedures?|blocking\s+techniques?)\b/gi;
+      const sinDuracion=[];
+      for(const m of text.matchAll(rbPattern)){
         const ctx=text.slice(Math.max(0,m.index-200),m.index+300).toLowerCase();
         const hasDuration=/(10|15|ten|fifteen)\s*(to|–|-|and)?\s*(15|twenty|seconds?|sec\b)/.test(ctx)||/10[\s-–]15\s*sec/.test(ctx);
-        if(!hasDuration){
-          findings.push({
+        if(!hasDuration)sinDuracion.push({match:m[0],index:m.index});
+      }
+      if(!sinDuracion.length)return[];
+      const primero=sinDuracion[0];
+      // Formas distintas de nombrarlo, para que el analista las encuentre todas.
+      const formas=[...new Set(sinDuracion.map(o=>o.match))];
+      const cuantas=sinDuracion.length>1
+        ? ` Aparece ${sinDuracion.length} veces sin la duración al lado${formas.length>1?`, como ${formas.slice(0,-1).map(f=>'"'+f+'"').join(', ')} y "${formas[formas.length-1]}"`:''}.`
+        : '';
+      return[{
             ruleId:'RESPONSE_BLOCKING_DURATION',severity:'blocker',category:'clinical_safety',
-            description:'Response blocking is documented without specifying the required short duration constraint (10–15 seconds). Per Medicaid and BACB standards, response blocking must be time-limited to prevent it from functioning as a restraint procedure.',
-            matchedText:m[0],context:extractContext(text,m.index,m[0].length),position:m.index,
+            description:'Response blocking is documented without specifying the required short duration constraint (10–15 seconds). Per Medicaid and BACB standards, response blocking must be time-limited to prevent it from functioning as a restraint procedure.'+cuantas,
+            matchedText:primero.match,context:extractContext(text,primero.index,primero.match.length),position:primero.index,
+            occurrences:sinDuracion.length,
             suggestedAction:'Add explicit duration: "Response blocking will be applied for 10–15 seconds only, followed by immediate redirection to the replacement behavior."',
             suggestedRewrite:'Protective response blocking will be applied for 10–15 seconds to prevent the completion of the behavior, followed by immediate prompting and reinforcement of the replacement response.',
             status:'open',createdAt:Date.now()
-          });
-        }
-      }
-      return findings;
+      }];
     }
   },
   {
@@ -1897,6 +1920,16 @@ async function runAudit(){
     findings=findings.concat(scanUnintegratedEdits(text,state.currentDoc.docType));
     findings=findings.concat(scanCommunicationCongruence(text));
     findings=findings.concat(scanSTOIntegrity(text));
+
+    /* v2.3: procedimiento restrictivo o de retirada de atencion en zona de
+       escalada. Va en la capa DETERMINISTA, no dentro de if(state.apiKey): la
+       decision de Rolando fue «alertar siempre, con la sugerencia personalizada
+       si hay canonico», y la primera version la dejo dentro del bloque de la
+       API, donde no habria corrido sin clave. Recibe el canonico CACHEADO en el
+       documento, asi que la sugerencia se personaliza desde la segunda auditoria
+       del mismo documento; en la primera, sin canonico todavia, da la
+       alternativa generica del procedimiento y no inventa funcion. */
+    findings=findings.concat(scanRestrictiveInRiskContext(text,state.currentDoc.docType,state.currentDoc.canonical));
 
     if(state.apiKey){
       // ---- Canonical extraction (cached on the document) ----
@@ -2994,6 +3027,251 @@ function scanReplacementAsIntervention(text,canonical){
   }];
 }
 
+/* ============================================================
+   v2.3 (20 nov 2026) — PROCEDIMIENTO RESTRICTIVO O DE RETIRADA DE ATENCION
+   EN ZONA DE ESCALADA
+
+   Decision de Rolando: «el auditor debe alertar cuando se usen intervenciones
+   restrictivas, o de atencion, en situaciones que pueden llegar a generar
+   riesgos si es que escalan, por lo menos alertar y sugerir cuales serian las
+   mejores opciones a seguir segun el tipo de comportamiento (topografia y
+   funcion)».
+
+   EL REPARTO CON LAS REGLAS QUE YA EXISTEN, que es lo que evita duplicar:
+     · El peligro YA ESTA (una conducta de DANGEROUS_BEHAVIORS en la vecindad)
+       -> lo cubren los blockers vigentes: PLANNED_IGNORING_AGGRESSION (v2.1),
+          DRL_DANGEROUS, RESPONSE_BLOCKING_DURATION, FL_EXCLUDED_RESTRAINT.
+       Esta regla CALLA ahi: una tarjeta menos, no una severidad discutida.
+     · El peligro PUEDE LLEGAR (la conducta aun no es peligrosa pero suele
+       escalar, o el propio documento dice que escala) -> esta regla, warning.
+   Por eso el restraint y el response blocking NO estan en la lista: ya tienen
+   su blocker. Lo que entra es lo que no vigilaba nadie.
+
+   COMO SE DECIDE QUE PUEDE ESCALAR (decision de Rolando, las dos senales):
+     (a) la topografia es de las que escalan — ESCALATION_PRONE, que a proposito
+         NO repite nada de DANGEROUS_BEHAVIORS: esto es la zona gris;
+     (b) el documento lo dice — ESCALATION_LANGUAGE.
+
+   LA SUGERENCIA. Determinista para alertar, personalizada si hay canonico: con
+   el canonico se nombra la conducta, su topografia y su funcion, y se proponen
+   las alternativas congruentes para esa funcion; sin el, la alternativa
+   generica del procedimiento. Asi la regla sigue corriendo sin clave de API.
+
+   UNA TARJETA POR PROCEDIMIENTO, no por aparicion (§1.10, §1.16): cada
+   procedimiento necesita un consejo distinto, pero doce avisos del mismo no. */
+
+/* Conductas que todavia no son peligrosas pero suelen escalar hasta serlo.
+   Ninguna esta en DANGEROUS_BEHAVIORS: si estuviera, manda el blocker. */
+const ESCALATION_PRONE=[
+  'screaming','screams','yelling','yells','shouting','crying','cries','whining',
+  'protest','protesting','refusal','refuses','refusing','non-compliance','noncompliance',
+  'flopping','dropping to the floor','falling to the floor','flopping to the floor',
+  'grabbing','grabs','snatching','spitting','spits','stripping','disrobing',
+  'cursing','profanity','verbal threat','verbal threats','threatening',
+  'stomping','slamming','banging objects','pounding','clearing surfaces',
+  /* Vistas en los doce assessments medidos, y que faltaban: */
+  'outburst','outbursts','disruptive behavior','disruptive behaviour','disruption','off-task',
+  'grito','gritos','llanto','negativa','rabieta leve','escupir','agarrar'
+];
+
+/* Lo que el propio documento dice de la escalada. */
+const ESCALATION_LANGUAGE=/\b(?:escalat\w*|precursors?|may\s+(?:become|lead\s+to|result\s+in)\s+\w*\s*(?:aggress\w*|sib|self-?injur\w*|unsafe|dangerous)|leads?\s+to\s+(?:aggress\w*|sib|self-?injur\w*)|intensif\w+|escala\b|escalada\b|deriva\s+en)\b/i;
+
+/* La retirada de atencion, con las MISMAS formas que la regla v2.1 de
+   PLANNED_IGNORING_AGGRESSION. Se duplica el patron a proposito y no se toca
+   aquella: es una regla clinica de Rolando y un blocker de seguridad, asi que
+   el precedente del §1.14 manda — no se mueve lo compartido sin que se pida.
+   Si alguna vez cambia alla, cambiar aqui tambien. */
+const ATTENTION_WITHDRAWAL_RE=/\bplanned\s+ignoring\b|\battention\s+extinction\b|\bextinction\s+of\s+(?:the\s+)?attention\b|\b(?:withhold(?:ing|s)?|withheld|minimi[sz](?:e|es|ed|ing)|withdraw(?:ing|s|n)?|remov(?:e|es|ed|ing))\s+(?:the\s+)?(?:social\s+)?attention\b|\bignor(?:e|es|ing)\s+the\s+behavio\w*\b/gi;
+
+/* MENCIONAR NO ES PRESCRIBIR, por tercera vez en este proyecto, y la medicion
+   sobre doce assessments reales lo dejo en evidencia: de 14 tarjetas, 6 eran
+   «physical prompts» de una jerarquia de prompts y varias de RIRD eran menus de
+   estrategias. La vecindad de 300 caracteres creaba una atribucion que el texto
+   no hace. Asi que el procedimiento tiene que estar PRESCRITO en su clausula. */
+const PROC_PRESCRITO=/\b(?:will\s+be\s+(?:the\s+\w+\s+)?(?:used|implemented|applied|utilized|delivered)|is\s+(?:used|implemented|applied|utilized|delivered)|are\s+(?:used|implemented|applied|utilized)|shall\s+be\s+used|(?:staff|RBT|BCBA|BCaBA|analyst|therapist|technician|caregiver|parent)\s+will\s+\w+|will\s+implement|implement(?:s|ed)\b|appl(?:ies|ied)\b|contingent\s+(?:up)?on|in\s+response\s+to\s+the\s+behavio|as\s+a\s+consequence|following\s+(?:each\s+)?(?:the\s+)?(?:behavio|incident|episode|occurrence)|when\s+the\s+behavio\w*\s+occurs|se\s+(?:usar[aá]|aplicar[aá]|implementar[aá]|utilizar[aá]))/i;
+
+/* La OTRA via, y la que de verdad usa este corpus: el procedimiento esta atado a
+   una conducta justo detras, con una preposicion de enlace. Asi lo escriben, en
+   imperativo y en celdas de tabla — «Withhold or minimize attention FOR Property
+   Destruction», «... TO maladaptive behaviors maintained by attention» — y no con
+   «will be used». Exigir solo el verbo prescriptivo dejo la regla muda en los
+   doce documentos medidos, que es peor que inutil: es falsa tranquilidad.
+   Se mira DETRAS del procedimiento, no en toda la clausula, porque el enlace
+   tiene que ser suyo y no de otra frase. */
+const PROC_ATADO_A_CONDUCTA=/^[^.]{0,140}?\b(?:behaviou?rs?|maladaptive|aggress\w+|\bsib\b|self-?injur\w+|tantrums?|outbursts?|meltdowns?|destruction|elopement|scream\w*|yell\w*|cry\w*|cries\b|whin\w+|refus\w+|noncompliance|non-compliance|stereotyp\w+|disrupt\w+|property|bolting|climbing|spitting|grabbing)\b/i;
+
+/* Marco DESCRIPTIVO estrecho: el documento esta DEFINIENDO el procedimiento o
+   citando literatura, no prescribiendolo. Veta aunque haya un verbo prescriptivo
+   suelto en la clausula. Deliberadamente corto: un «including» a secas NO veta,
+   porque «interventions include planned ignoring for screaming» si prescribe. */
+const PROC_DESCRIPTIVO=/\b(?:is\s+an\s+evidence[- ]based|contains\s+(?:two|three)\s+main\s+components?|is\s+defined\s+as\s+a\s+(?:procedure|practice)|refers\s+to\s+a\s+(?:procedure|practice)|according\s+to\s+the\s+literature|research\s+(?:has\s+)?(?:shown|demonstrated)|in\s+the\s+(?:case|event)\s+that|should\s+(?:it|they|this|these)\s+be\s+(?:used|needed|required)|if\s+(?:it|they|these)\s+(?:is|are)\s+used|least\s+restrictive\s+strategies|procedures\s+will\s+be\s+described)\b/i;
+
+/* Vocabulario de JERARQUIA DE PROMPTS: ahi la guia fisica es ENSENANZA, no una
+   consecuencia. El caso que lo destapo, repetido 22 veces en un reassessment:
+   «with full prompts (including physical guidance and frequent redirection)». */
+const PROMPT_HIERARCHY=/\b(?:prompt\s+(?:hierarch\w+|level|fading)|least[-\s]to[-\s]most|most[-\s]to[-\s]least|fade\s+(?:the\s+)?prompt|full\s+prompts?|partial\s+(?:physical|prompt)|full\s+physical|gestural\s+prompt|model\s+prompt|independent\s+(?:response|performance)|prompted\s+trials?|jerarqu[ií]a\s+de\s+(?:prompts|ayudas))\b/i;
+
+/* Senal de que la guia fisica se usa COMO CONSECUENCIA de la conducta. */
+const GUIA_COMO_CONSECUENCIA=/\b(?:contingent\s+(?:up)?on|in\s+response\s+to|as\s+a\s+consequence|following\s+(?:each\s+)?(?:the\s+)?(?:behavio|incident|episode|occurrence)|when\s+(?:the\s+)?(?:behavio\w*\s+occurs|client|child|recipient|he|she|they)\s+(?:is|are|engages|begins|starts|displays|exhibits|will\s+not)\b|to\s+(?:interrupt|block|stop)\s+the\s+behavio|to\s+prevent\s+(?:the\s+)?(?:completion|behavio)|consequence\s+procedure)\b/i;
+
+/* Los procedimientos que vigila la regla. */
+const RESTRICTIVE_PROCEDURES=[
+  {id:'RIRD', etiqueta:'RIRD / interrupción y redirección de respuesta',
+   re:/\bRIRD\b|\bresponse\s+interruption(?:\s+and\s+redirection)?\b|\binterruption\s+and\s+redirection\b|\binterrupci[oó]n\s+y\s+redirecci[oó]n\b/gi,
+   encajaCon:'automatic',
+   generica:'Response interruption and redirection is the fit for automatically maintained behavior. For any other function, use the procedure that matches that function and keep RIRD out of the consequence chain.'},
+  {id:'TIMEOUT', etiqueta:'time-out, seclusión o retirada del área',
+   re:/\btime[-\s]?outs?\b|\bexclusionary\s+time[-\s]?out\b|\bseclusion\b|\bcontingent\s+observation\b|\bremov(?:e|es|ed|ing|al)\s+(?:of\s+)?(?:the\s+)?(?:client|child|recipient|student|him|her|them)\s+from\s+the\s+(?:area|room|activity|group|setting)\b|\btiempo\s+fuera\b/gi,
+   encajaCon:null,
+   generica:'Time-out, seclusion and removal from the area withhold access and can escalate the very behavior they follow. Replace them with the function-matched procedure, and keep any brief removal strictly for documented safety with its own limit and criterion.'},
+  {id:'PHYSICAL_GUIDANCE', etiqueta:'guía física o mano sobre mano como consecuencia',
+   re:/\bhand[-\s]over[-\s]hand\b|\bphysical\s+(?:guidance|prompting|prompts?|assistance)\b|\bmanual\s+guidance\b|\bgu[ií]a\s+f[ií]sica\b|\bmano\s+sobre\s+mano\b/gi,
+   encajaCon:null,
+   exigeConsecuencia:true,          // si es ensenanza no es esta regla
+   vetaSi:PROMPT_HIERARCHY,
+   generica:'Physical guidance used as a consequence sits at the edge of restraint. State whether it is teaching (a prompt inside a prompt hierarchy, with a fading plan) or a consequence; if it is a consequence, replace it with the function-matched procedure.'},
+  {id:'RESPONSE_COST', etiqueta:'costo de respuesta o sobrecorrección',
+   re:/\bresponse\s+cost\b|\bovercorrection\b|\bpositive\s+practice\b|\bloss\s+of\s+(?:points|tokens|privileges)\b|\bremoval\s+of\s+(?:points|tokens)\b|\bcosto\s+de\s+respuesta\b|\bsobrecorrecci[oó]n\b/gi,
+   encajaCon:null,
+   generica:'Response cost and overcorrection remove an earned reinforcer and can escalate the behavior. Pair any response cost with DRA so the appropriate response still earns, and prefer the function-matched procedure over overcorrection.'},
+  {id:'ATTENTION_WITHDRAWAL', etiqueta:'retirada de atención',
+   re:ATTENTION_WITHDRAWAL_RE,
+   encajaCon:null,
+   blockerLoCubre:true,   // con el peligro ya presente manda PLANNED_IGNORING_AGGRESSION (v2.1)
+   generica:'Withdrawing attention from a behavior that can escalate predicts an extinction burst, and the burst can land on a behavior that is not safe. Teach and reinforce the replacement response (FCT/DRA) with the consequence that matches the function, and keep attention withdrawal out of the plan for this behavior.'}
+];
+
+/* Alternativas congruentes por funcion, para la accion sugerida (en ingles,
+   como el resto de suggestedAction: la lee la analista). Es la misma tabla que
+   el prompt de coherencia ya usa, puesta en codigo para poder citarla sin IA. */
+const CONGRUENT_BY_FUNCTION={
+  escape:'FCT teaching a break or help request, DNRA, extinction of escape paired with reinforcement of the mand, demand fading, offering a choice, and an advance warning before the transition.',
+  attention:'FCT teaching an attention mand (vocal, raising a hand, tapping a shoulder), DRA delivering attention for the appropriate response, and fixed-time noncontingent attention.',
+  tangible:'FCT teaching a mand for the specific item or activity, tolerance-for-waiting training, DRA/DRO, and scheduled access to the item.',
+  automatic:'Competing stimuli or matched stimulation, environmental enrichment, RIRD, DRO, and an alternative activity that accesses the same input.'
+};
+
+/* Por que el peligro ya presente no significa lo mismo para todos los
+   procedimientos: la primera version callaba siempre que hubiera una conducta
+   de DANGEROUS_BEHAVIORS en la vecindad, «porque manda el blocker». Pero solo
+   la retirada de atencion tiene un blocker que la cubra (v2.1). Para el time-out,
+   el RIRD, la guia fisica y el costo de respuesta NO existe ninguno, asi que
+   callar ahi perdia el hallazgo entero: lo destapo un caso de prueba,
+   «overcorrection ... which may lead to aggression», que no reportaba nadie.
+   Donde no hay blocker, el peligro documentado es la senal MAS fuerte. */
+function _escalaRiesgo(text,position,cubiertoPorBlocker){
+  const ctx=text.slice(Math.max(0,position-300),position+300).toLowerCase();
+  const peligro=DANGEROUS_BEHAVIORS.find(b=>ctx.indexOf(b)!==-1);
+  if(peligro){
+    if(cubiertoPorBlocker)return null;      // la retirada de atencion: manda el blocker v2.1
+    return {via:'una conducta peligrosa ya documentada', senal:peligro};
+  }
+  const topo=ESCALATION_PRONE.find(b=>ctx.indexOf(b)!==-1);
+  if(topo)return {via:'la topografía', senal:topo};
+  const m=ctx.match(ESCALATION_LANGUAGE);
+  if(m)return {via:'el documento', senal:m[0]};
+  return null;
+}
+
+/* La conducta del canonico a la que pertenece el procedimiento, por ESTRUCTURA:
+   el procedimiento esta en la lista interventions de esa conducta. Se reutiliza
+   _rpNorm de la v2.2 en vez de normalizar otra vez. */
+function _conductaDelProcedimiento(canonical,formas){
+  if(!canonical||!Array.isArray(canonical.behaviors))return null;
+  const buscadas=formas.map(f=>_rpNorm(f)).filter(Boolean);
+  for(const b of canonical.behaviors){
+    const its=(b&&Array.isArray(b.interventions)?b.interventions:[]).map(x=>_rpNorm(String(x==null?'':x)));
+    for(const f of buscadas){
+      if(its.some(it=>it&&it.indexOf(f)!==-1))return b;
+    }
+  }
+  return null;
+}
+
+function scanRestrictiveInRiskContext(text,docType,canonical){
+  const t=String(text==null?'':text);
+  if(!t.trim())return[];
+  if(docType==='monthly'||docType==='medical_necessity'||docType==='iep')return[];
+  const findings=[];
+  for(const proc of RESTRICTIVE_PROCEDURES){
+    const vivas=[];
+    const re=new RegExp(proc.re.source,'gi');
+    let m;
+    while((m=re.exec(t))!==null){
+      if(re.lastIndex<=m.index)re.lastIndex=m.index+1;
+      // Mencionar no es prescribir: lo negado y lo que cita el cuidador se eximen.
+      if(_termNegated(t,m.index)||_quotedOrCaregiverReported(t,m.index))continue;
+      /* La negacion tambien va DESPUES, en el predicado: «time-out is prohibited
+         for this client». _termNegated solo mira hacia atras, asi que se reutiliza
+         FL_NEGATION_AFTER_RES, que ya resuelve esa forma para los servicios
+         excluidos y trae documentado por que la ventana es estrecha. */
+      const despues=t.slice(m.index+m[0].length,m.index+m[0].length+90);
+      if(FL_NEGATION_AFTER_RES.some(re=>re.test(despues)))continue;
+      /* El procedimiento tiene que estar PRESCRITO en su clausula, no solo
+         mencionado en un menu de estrategias ni definido como practica. */
+      const clausula=_termSentence(t,m.index,m[0].length);
+      const detras=t.slice(m.index+m[0].length,m.index+m[0].length+140);
+      if(!PROC_PRESCRITO.test(clausula)&&!PROC_ATADO_A_CONDUCTA.test(detras))continue;
+      if(PROC_DESCRIPTIVO.test(clausula))continue;
+      /* Negacion del PREDICADO, mas lejos de lo que alcanza FL_NEGATION_AFTER_RES:
+         «A general instruction to withhold attention, breaks, or preferred items
+         across all behaviors IS NOT APPROPRIATE» es el documento advirtiendo
+         contra la practica, y la negacion cuelga de todo el sujeto. Se vio en un
+         reassessment real, donde daba un falso positivo. */
+      if(/\b(?:is|are)\s+(?:not\s+(?:appropriate|recommended|indicated|permitted)|inappropriate|never\s+appropriate)\b|\b(?:should|must)\s+not\s+be\s+(?:used|implemented|applied)\b/i.test(clausula))continue;
+      if(proc.vetaSi&&proc.vetaSi.test(clausula))continue;
+      if(proc.exigeConsecuencia&&!GUIA_COMO_CONSECUENCIA.test(clausula))continue;
+      const riesgo=_escalaRiesgo(t,m.index,!!proc.blockerLoCubre);
+      if(!riesgo)continue;
+      if(vivas.some(o=>Math.abs(o.index-m.index)<40))continue;   // una mencion, un hallazgo
+      vivas.push({match:m[0],index:m.index,riesgo:riesgo});
+    }
+    if(!vivas.length)continue;
+    const primero=vivas[0];
+    const formas=[...new Set(vivas.map(o=>o.match))];
+    const vias=[...new Set(vivas.map(o=>o.riesgo.via))];
+    const senales=[...new Set(vivas.map(o=>o.riesgo.senal))].slice(0,3);
+
+    const conducta=_conductaDelProcedimiento(canonical,formas);
+    const fn=conducta&&conducta.function?String(conducta.function).toLowerCase():null;
+    const congruentes=fn&&CONGRUENT_BY_FUNCTION[fn]?CONGRUENT_BY_FUNCTION[fn]:null;
+
+    let dondeDice='';
+    if(conducta&&conducta.name){
+      const topo=conducta.topography&&String(conducta.topography).trim()
+        ? ` Topografía documentada: «${String(conducta.topography).replace(/\s+/g,' ').trim().slice(0,160)}».`:'';
+      const fnTxt=fn&&fn!=='unstated'
+        ? ` Función documentada: ${fn}.`
+        : ' El documento no establece la función de esa conducta, y sin función no se puede elegir el procedimiento.';
+      dondeDice=` El procedimiento figura entre las intervenciones de «${String(conducta.name).replace(/\s+/g,' ').trim().slice(0,90)}».${topo}${fnTxt}`;
+      if(proc.encajaCon&&fn===proc.encajaCon)
+        dondeDice+=` Para esa función el procedimiento SÍ es el indicado: lo que falta no es cambiarlo, sino acotarlo (límite, criterio de retirada y plan de crisis).`;
+      else if(proc.encajaCon&&fn&&fn!=='unstated')
+        dondeDice+=` Para esa función este procedimiento no es el indicado.`;
+    }
+
+    findings.push({
+      id:uid(),
+      ruleId:'RESTRICTIVE_IN_RISK_CONTEXT_'+proc.id,
+      severity:'warning',
+      category:'restrictive_procedure',
+      description:`Se usa ${proc.etiqueta} ("${primero.match}") sobre una conducta que puede escalar hasta ser peligrosa, y ahí el procedimiento puede empeorar justo lo que sigue. La señal de escalada la da ${vias.join(' y ')}: ${senales.map(x=>'«'+x+'»').join(', ')}.${dondeDice}${vivas.length>1?` Aparece ${vivas.length} veces en ese contexto${formas.length>1?`, como ${formas.slice(0,-1).map(f=>'"'+f+'"').join(', ')} y "${formas[formas.length-1]}"`:''}.`:''} El sistema solo alerta: la decisión clínica es del analista.`,
+      matchedText:primero.match,
+      context:extractContext(t,primero.index,primero.match.length),
+      position:primero.index,
+      occurrences:vivas.length,
+      suggestedAction:(congruentes
+        ? `This behavior's documented function is ${fn}. Congruent procedures for it: ${congruentes} `
+        : `${proc.generica} `)
+        + 'Where the procedure stays in the plan, state its limit, the criterion for withdrawing it, and the crisis plan that covers an escalation; and name the direct method that established the function, since a function resting only on a rating scale does not justify a restrictive procedure for a behavior that can escalate.',
+      status:'open',
+      createdAt:Date.now()
+    });
+  }
+  return findings;
+}
+
 function scanPlaceholders(text){
   const findings=[];
   const tbdValid=[]; // TBD/TBA de fecha de servicio: convención válida
@@ -3448,8 +3726,8 @@ const AUDIT_REQUIREMENTS=[
    reglas:['SUPERVISION_10PCT'],
    nota:'Pendiente de verificar contra el texto vigente del BACB antes de citar una seccion.'},
   {id:'ABA_PROHIBITED_PROCEDURES', fuente:'Dominio clinico codificado a mano (BACB, CASP)', edicion:'-', seccion:'-', verificacion:'convencion', severidad:'blocker',
-   requisito:'Planned ignoring ni ninguna retirada de atencion nunca para agresion, SIB, elopement, destruccion, rabietas o trepar; response blocking con limite de 10-15 s; DRL nunca para conductas peligrosas; RIRD para automatico/sensorial; los cuidadores no recolectan datos; un reemplazo es valido solo si es funcionalmente equivalente.',
-   reglas:['DRL_DANGEROUS','PROH_PLANNED_IGNORING_AGGRESSION','RESPONSE_BLOCKING_DURATION','(terminos e intervenciones prohibidas)'],
+   requisito:'Planned ignoring ni ninguna retirada de atencion nunca para agresion, SIB, elopement, destruccion, rabietas o trepar; un procedimiento restrictivo o de retirada de atencion sobre una conducta que puede escalar se alerta y se propone la alternativa congruente con su funcion; response blocking con limite de 10-15 s; DRL nunca para conductas peligrosas; RIRD para automatico/sensorial; los cuidadores no recolectan datos; un reemplazo es valido solo si es funcionalmente equivalente.',
+   reglas:['DRL_DANGEROUS','PROH_PLANNED_IGNORING_AGGRESSION','RESPONSE_BLOCKING_DURATION','RESTRICTIVE_IN_RISK_CONTEXT_*','(terminos e intervenciones prohibidas)'],
    nota:'Reglas clinicas de Rolando. No derivadas de una lectura automatizada de las fuentes; no citar seccion.'}
 ];
 
@@ -3538,7 +3816,12 @@ function verifiedSourcesForPrompt(){
    marca en UNA tarjeta blocker, con el texto en ingles para la autora. Tres lineas en los prompts de IA (extraccion
    fiel, coherencia, conceptual) para que la IA no tome el programa por una intervencion. Sin la extraccion
    estructurada (sin API) no corre. Ver scanReplacementAsIntervention. */
-const AUDITOR_RULES_VERSION='2026.10.11-1';
+/* 2026.11.20-1 (v2.3): RESTRICTIVE_IN_RISK_CONTEXT_*. Un procedimiento restrictivo (RIRD, time-out /
+   seclusion / retirada del area, guia fisica como consecuencia, costo de respuesta / sobrecorreccion) o
+   una retirada de atencion sobre una conducta que PUEDE escalar hasta ser peligrosa sale como warning,
+   una tarjeta por procedimiento, con la alternativa congruente con la funcion. Donde el peligro ya esta
+   presente callan y mandan los blockers vigentes. Ver scanRestrictiveInRiskContext. */
+const AUDITOR_RULES_VERSION='2026.11.20-1';
 
 // Desglose del alcance de la IA sobre los hallazgos de una auditoria: cuales
 // vienen de reglas deterministas (regex, sin IA) y cuales de una pasada de IA.
@@ -6247,7 +6530,7 @@ Output format — strict JSON only, no preamble, no markdown:
 // ============================================================================
 // Safety-critical categories/rules are never auto-dismissed even if the critic
 // thinks they are false positives — a human must always see them.
-const CRITIC_NEVER_AUTODISMISS=/safety|crisis|planned_ignoring|dangerous|self_injur|aggression|elopement|response_block|DRL|replacement_as_intervention|REPLACEMENT_LISTED_AS_INTERVENTION/i;
+const CRITIC_NEVER_AUTODISMISS=/safety|crisis|planned_ignoring|dangerous|self_injur|aggression|elopement|response_block|DRL|replacement_as_intervention|REPLACEMENT_LISTED_AS_INTERVENTION|restrictive_procedure|RESTRICTIVE_IN_RISK_CONTEXT/i;
 
 async function runCriticPass(findings, fullText){
   if(!findings || findings.length===0) return {};
@@ -8036,6 +8319,7 @@ const REPORT_CAT_LABELS={
     clinical_safety:'Clinical safety',
     prohibited_intervention:'Non-ABA intervention',
     replacement_as_intervention:'Replacement listed as intervention',
+    restrictive_procedure:'Restrictive procedure in a risk context',
     emotional_state:'Non-observable language (clinical)',
     role_articles:'Article usage',
     caregiver_scope:'Caregiver scope',
@@ -8618,6 +8902,8 @@ function generalRecommendations(findings){
     recs.push('Revisar los objetivos (STO/LTO): un objetivo por fila sin etiquetas duplicadas, criterios de medición sin repetir, y una progresión coherente (el valor inicial de cada STO igual al final del anterior).');
   if(anyCat('regulatory_completeness'))
     recs.push('Completar las secciones requeridas ausentes o poco identificadas, con encabezados y terminología estándar de un assessment de Florida Medicaid.');
+  if(anyCat('restrictive_procedure'))
+    recs.push('Revisar los procedimientos restrictivos y de retirada de atención sobre conductas que pueden escalar: acotarlos (límite, criterio de retirada, plan de crisis) o sustituirlos por el procedimiento congruente con la función de la conducta; el sistema solo alerta, la decisión es del analista.');
   if(anyCat('replacement_as_intervention'))
     recs.push('Sacar de la lista de intervenciones los programas de reemplazo/adquisición (se enseñan, no se aplican para reducir la conducta) y dejarlos solo en la sección de reemplazos; revisar en el original si una tabla partida entre páginas desalineó las columnas.');
   if(anyCat('emotional_state','prohibited_concept','prohibited_intervention')||anyText(/proh_|term_/))
@@ -9951,6 +10237,7 @@ function getCorrectionComment(finding){
     prohibited_terminology:'replace with observable behavioral description',
     prohibited_intervention:'replace with authorized intervention compatible with the behavior function',
     replacement_as_intervention:'keep this replacement/acquisition program only in the replacement section; list as interventions only the procedures that reduce the behavior',
+    restrictive_procedure:'bound the restrictive procedure (limit, withdrawal criterion, crisis plan) or replace it with the procedure congruent with the behavior\u2019s function',
     explanatory_fiction:'replace with observable antecedent and behavior description',
     role_articles:'use proper article (the BCBA, the RBT, the BCaBA)',
     copy_paste_contamination:'verify against actual client information and correct',

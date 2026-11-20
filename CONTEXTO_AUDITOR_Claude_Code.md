@@ -404,6 +404,104 @@ Ningún hallazgo anterior se perdió: las diferencias son solo altas.
 
 ---
 
+### 1.16 Response blocking: una tarjeta, y solo el procedimiento nombrado
+
+Las dos cosas que el §1.15 dejó abiertas, decididas por Rolando el 19 de noviembre después de ver la regla disparar por primera vez (hasta el 11 de octubre estuvo muerta por los caracteres de retroceso).
+
+**Se fue el `blocking` a secas.** El patrón era `/\b(response blocking|protective response blocking|blocking)\b/gi`, y la tercera alternativa era un coladero: el procedimiento se llama *response blocking*, mientras que `blocking` suelto es una palabra corriente en un documento de ABA y describe la conducta del **cliente** o una acción del personal que no es el procedimiento. En el reassessment de Safira sus tres únicas apariciones eran *«may require physical blocking of behavior»* y *«without physical blocking or maladaptive behavior»* —un criterio de meta, no una prescripción— y daban **tres blockers falsos**. En su lugar entran las dos formas que los documentos sí usan para nombrarlo: `blocking procedure` y `blocking technique(s)`.
+
+El patrón queda:
+
+```
+/\b(?:protective\s+response\s+blocking|response\s+blocking|blocking\s+procedures?|blocking\s+techniques?)\b/gi
+```
+
+La forma larga va **primera** en la alternancia, para que `protective response blocking` se cite entera y no como `response blocking`.
+
+**Una sola tarjeta.** Antes salía una por aparición: doce idénticas en el assessment de Abrahan. Mismo criterio que el §1.10, y el que defiende el propio comentario de la v2.2: varias tarjetas iguales son lo que hace que se deje de leer el panel. La tarjeta lleva `occurrences`, la posición de la **primera** mención sin duración, y las formas distintas en el texto («Aparece 4 veces sin la duración al lado, como "Response Blocking", "blocking procedure" y "blocking techniques"»). Solo cuentan las menciones **sin** duración: si el documento nombra el procedimiento cinco veces y tres llevan los 10-15 s al lado, la tarjeta habla de dos.
+
+**Alcance:** solo esta regla. `CLINICAL_SAFETY_RULES` sigue emitiendo una tarjeta por aparición en las demás —`PLANNED_IGNORING_AGGRESSION` ya deduplica a 40 caracteres por su cuenta— porque Rolando pidió esta y las otras son suyas.
+
+**Lo que sigue abierto, y no se tocó porque no se pidió:** `hasDuration` mira una ventana de −200/+300 caracteres, así que **cualquier** «10 segundos» o «15 segundos» de la vecindad la satisface, aunque pertenezca a otro criterio. Se vio construyendo la prueba de humo: un *«handing the break card within 10 seconds of the demand»* en la línea de arriba silenciaba el hallazgo. Es la misma familia que los otros bugs de este proyecto —una cifra al lado de la etiqueta equivocada— y el arreglo sería exigir que la duración esté en la misma cláusula que el procedimiento, no en la vecindad.
+
+**Validación, con una limitación que importa.** El scratchpad de la sesión se vació entre el 11 de octubre y el 19 de noviembre, así que **se perdieron las 22 harnesses de Node, las 14 pasadas de navegador, `auditar.js` y los tres documentos reales** (eran PHI y nunca se commitearon: no hay copia en ninguna parte). No se pudo medir el efecto de extremo a extremo sobre Jade, Abrahan y Safira.
+
+Lo que sí se hizo:
+
+- `rb_browser.js` — **14 casos** sobre la regla real de la página, **seis de ellos frases textuales** de los tres assessments, conservadas de la conversación antes de perder los archivos: las tres de Safira que daban el falso positivo, la de Jade con `(15 sec)`, la de Jade con «blocking her from aggressing», y las dos de Abrahan. Más la prueba de agregación (cuatro menciones → una tarjeta, `occurrences` 4) y un control de que `DRL_DANGEROUS` y `PLANNED_IGNORING_AGGRESSION` siguen disparando.
+- `humo_browser.js` — los **24 escaneos deterministas** sobre un assessment sintético, comprobando que ninguno lanza, que las reglas de los PR #6, #8, #9 y #10 siguen vivas, y que `RESPONSE_BLOCKING_DURATION` da exactamente **una** tarjeta. No reemplaza a las 22 harnesses: es una red de humo, no cobertura equivalente.
+
+Si Rolando vuelve a subir los tres documentos, la medición de extremo a extremo se puede repetir.
+
+---
+
+### 1.17 Procedimiento restrictivo o de retirada de atención en zona de escalada (`scanRestrictiveInRiskContext`)
+
+**Propuesta de Rolando** (20 nov 2026): *«el auditor debe alertar cuando se usen intervenciones restrictivas, o de atención, en situaciones que pueden llegar a generar riesgos si es que escalan, por lo menos alertar y sugerir cuáles serían las mejores opciones a seguir según el tipo de comportamiento (topografía y función)»*. Decidió: **warning siempre**, los cuatro grupos de procedimientos, escalada por topografía propensa **o** por lo que diga el documento, y alerta determinista con sugerencia personalizada cuando hay canónico.
+
+**El reparto con los blockers que ya existían**, que es lo que evita duplicar:
+
+| Situación | Quién la reporta |
+|---|---|
+| El peligro **ya está** y hay blocker que lo cubre (retirada de atención) | `PLANNED_IGNORING_AGGRESSION` (v2.1) — esta regla calla |
+| El peligro **ya está** y **no** hay blocker (time-out, RIRD, guía física, costo de respuesta) | esta regla, y el peligro documentado es su señal más fuerte |
+| El peligro **puede llegar** (topografía propensa, o el documento lo dice) | esta regla, `warning` |
+
+Por eso el restraint (`FL_EXCLUDED_RESTRAINT`) y el response blocking (`RESPONSE_BLOCKING_DURATION`) **no** están en la lista: ya tienen su blocker.
+
+**Un hueco que destapó una prueba, y conviene no reintroducirlo.** La primera versión callaba siempre que hubiera una conducta de `DANGEROUS_BEHAVIORS` en la vecindad, «porque manda el blocker». El caso *«Overcorrection follows the behavior, which may lead to aggression»* no lo reportaba **nadie**: la sobrecorrección no está en ningún blocker, y la palabra `aggression` de la propia frase de escalada activaba el guard. El guard ahora solo vale para la retirada de atención, que es la única con blocker propio.
+
+**Qué vigila.** `RESTRICTIVE_PROCEDURES`, una tarjeta por procedimiento (§1.10, §1.16), porque cada uno necesita un consejo distinto pero doce avisos del mismo no:
+
+- `RIRD` — RIRD, response interruption (and redirection). Lleva `encajaCon:'automatic'`: cuando la función documentada **es** automática, la tarjeta lo dice —*«para esa función el procedimiento SÍ es el indicado»*— y pide acotarlo, no cambiarlo. No se regaña a una analista por usar RIRD en estereotipia.
+- `TIMEOUT` — time-out, exclusionary time-out, seclusión, observación contingente, retirar al cliente del área o la actividad.
+- `PHYSICAL_GUIDANCE` — hand-over-hand, guía física o manual, prompting físico **como consecuencia**. La tarjeta pide distinguir enseñanza (prompt dentro de una jerarquía, con plan de desvanecimiento) de consecuencia.
+- `RESPONSE_COST` — response cost, overcorrection, práctica positiva, pérdida de puntos o fichas.
+- `ATTENTION_WITHDRAWAL` — las mismas formas que la regla v2.1.
+
+**Duplicación deliberada:** `ATTENTION_WITHDRAWAL_RE` repite el patrón de la v2.1 en vez de extraerlo a una constante compartida. Precedente del §1.14: no se mueve lo compartido sin que se pida, y aquella es un **blocker de seguridad** de Rolando. Si cambia allá, cambiar aquí.
+
+**Cómo se decide que puede escalar** (`_escalaRiesgo`). `ESCALATION_PRONE` lista conductas que todavía no son peligrosas pero suelen escalar —grito, llanto, queja, negativa, tirarse al suelo, agarrar, escupir, amenaza verbal— y **no repite nada** de `DANGEROUS_BEHAVIORS`: esta regla es la zona gris. `ESCALATION_LANGUAGE` recoge lo que el documento dice: `escalat*`, `precursor`, `may lead to aggression`, `intensif*`, y las formas en español.
+
+**Las exenciones son las de la casa, y una de ellas hubo que añadirla.** `_termNegated` (hacia atrás) y `_quotedOrCaregiverReported` ya estaban, pero *«Time-out is prohibited for this client, who screams during transitions»* seguía disparando: la negación va **después**, en el predicado. Se reutiliza **`FL_NEGATION_AFTER_RES`**, que ya resuelve esa forma para los servicios excluidos y trae documentado por qué su ventana es estrecha. Tercera vez en el proyecto que la lección es la misma: *mencionar no es prescribir*.
+
+**La sugerencia.** `CONGRUENT_BY_FUNCTION` pone en código la tabla función → procedimientos congruentes que hasta ahora vivía **solo en el prompt de coherencia**, de modo que se puede citar sin IA. Con canónico la tarjeta nombra la conducta, su topografía textual y su función, y la acción sugerida propone las congruentes de esa función; sin canónico da la alternativa genérica del procedimiento y **no inventa** una función. Si la función es `unstated`, lo dice: *«el documento no establece la función de esa conducta, y sin función no se puede elegir el procedimiento»*.
+
+**Un fallo propio que la medición destapó antes de mergear:** la primera versión colgaba la llamada **dentro de `if(state.apiKey)`**, así que la regla no habría corrido sin clave de API — lo contrario de la decisión de Rolando («alertar siempre») y de lo que el PR afirmaba. Ahora va en la capa determinista, con el canónico **cacheado** en el documento: la sugerencia se personaliza desde la segunda auditoría del mismo documento, y en la primera da la alternativa genérica sin inventar función.
+
+**Conectada en los seis sitios** que la lección del §1.12 exige: `runAudit` (después de `scanReplacementAsIntervention`, para aprovechar el canónico), `REPORT_CAT_LABELS`, las recomendaciones del informe, el mapa de sugerencias, `CRITIC_NEVER_AUTODISMISS` —una alerta de seguridad no se auto-descarta— y la fila `ABA_PROHIBITED_PROCEDURES` de `AUDIT_REQUIREMENTS`, que ya agrupa las reglas clínicas de Rolando y sigue marcada `convencion`. Sin fila nueva: siguen siendo 35 requisitos.
+
+**Validación:** `restr_browser.js`, **31 aserciones** sobre la función real — 16 de qué dispara y qué no (los cinco procedimientos, las tres vías de escalada, el reparto con los blockers, lo negado por delante y por detrás, lo que cita el cuidador), severidad y categoría, la sugerencia con y sin canónico, el caso de RIRD + automático, el de función no establecida, la agregación, los tres `docType` donde no corre, y un control de que los tres blockers vigentes siguen disparando. Más `rb_browser.js` y `humo_browser.js` en verde. `node --check` limpio, cero mojibake, cero caracteres de control.
+
+**Medido el 20 nov sobre DOCE assessments reales** (9 reassessments, 3 iniciales, incluidos Jade, Abrahan y Safira), traídos de la carpeta de Drive de Rolando. **Hizo falta narrar cinco rondas de ajuste, y eso es lo más útil que dejó la medición:**
+
+| Ronda | Tarjetas v2.3 | Qué enseñó |
+|---|---|---|
+| 1 | **14** | 6 eran `physical prompts` de una **jerarquía de prompts** —*«with full prompts (including physical guidance and frequent redirection)»*, 22 veces en un solo documento— y varias de RIRD eran **menús de estrategias**. La vecindad de 300 caracteres creaba una atribución que el texto no hace |
+| 2 | **0** | Exigir un verbo prescriptivo (`will be used`) dejó la regla **muda en los doce**: estos documentos prescriben en **imperativo y en celdas de tabla** —*«Withhold or minimize attention for Property Destruction»*—, no en oraciones completas. Una regla que nunca habla es peor que inútil: es falsa tranquilidad |
+| 3 | **3** | Segunda vía: el procedimiento **atado a una conducta en su misma oración**, sin punto en medio. Faltaban topografías que el corpus sí usa (`outburst`, `disruptive behavior`, `off-task`) |
+| 4 | **5** | Dos falsos más: una **declaración de política** (*«In the case that Response Cost or Simple Corrections are used, procedures will be described»*) y un **marco condicional** |
+| 5 | **4** | El último: el documento **advirtiendo contra** la práctica (*«A general instruction to withhold attention… is not appropriate»*), con la negación colgando de todo el sujeto, fuera del alcance de tres palabras de `FL_NEGATION_AFTER_RES` |
+
+**Estado final: 4 tarjetas en 12 documentos** — Jade (×2), REAssessment32026MR, Efrain-R. Revisadas una a una contra el texto fuente. La que mejor muestra para qué sirve la regla es la de Jade: *«Token Economy (if already part of the treatment plan), **Planned Ignoring of minor refusal behaviors (when appropriate and safe)**, represent the same food after a brief interval»* — planned ignoring prescrito sobre negativa, en un protocolo de alimentación, con el hedge «when appropriate and safe» en un plan que documenta agresión física y SIB.
+
+**Las cinco guardas que salieron de ahí**, todas en el código y todas con un caso real que las fija en `restr_browser.js`:
+
+1. `PROC_PRESCRITO` **o** `PROC_ATADO_A_CONDUCTA` — una de las dos vías basta. La segunda es la que de verdad usa este corpus.
+2. `PROC_DESCRIPTIVO` — veta la definición de la práctica y el marco condicional o de política.
+3. `PROMPT_HIERARCHY` — veta la guía física cuando es enseñanza.
+4. `GUIA_COMO_CONSECUENCIA` — la guía física solo cuenta si es contingente a la conducta.
+5. Negación del **predicado** en la cláusula, más lejos de lo que alcanza `FL_NEGATION_AFTER_RES`.
+
+**Dos cosas que la medición encontró y que NO son de esta regla, sino de las de Rolando:**
+
+- **`PLANNED_IGNORING_AGGRESSION` no agrega:** en el assessment de Efrain-R saca **16 blockers idénticos** (de 38 totales; los otros 21 son `FL_GOAL_ELEMENT_TBD`). Es el mismo defecto que el §1.16 arregló para el response blocking, y esa regla es suya.
+- **`outburst` falta en `DANGEROUS_BEHAVIORS`**, aunque `tantrum` y `meltdown` sí están. Un *«Withhold or minimize attention for Outburst»* no lo coge el blocker v2.1; lo coge esta regla como warning solo porque `outburst` se añadió a `ESCALATION_PRONE`. Decisión de Rolando.
+
+**Límites de esta medición, que hay que decir:** el texto lo extrajo el conector de Drive, **no pdf.js**, así que los totales por documento **no son comparables** con las líneas base de septiembre y octubre (18/16/18 → 26/28/21). Y las pasadas de IA estaban desactivadas, así que el canónico no existía: se midió **cuándo alerta y cuándo calla**, que es lo que más riesgo tenía, pero no la sugerencia personalizada por topografía y función, que sigue cubierta solo con canónicos sintéticos.
+
+---
+
 ## 2. Arquitectura
 
 - **Un solo archivo HTML.** Todo el CSS en `<style>`, todo el JS en un único `<script>`.
